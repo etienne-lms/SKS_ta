@@ -1,0 +1,11 @@
+cscope.*
+build
+out
+Debug
+*.swp
+.cproject
+.project
+Makefile.in
+aclocal.m4
+autom4te.cache
+
