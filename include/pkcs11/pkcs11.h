@@ -189,6 +189,11 @@ extern "C" {
 #ifndef NULL_PTR
 #define NULL_PTR 0
 #endif
+/* The SKS TA is built witha 32bit representation of the cyrptoki */
+#include <stdint.h>
+#define __CK_ULONG
+typedef	int32_t		CK_LONG;
+typedef uint32_t	CK_ULONG;
 
 /* All the various Cryptoki types and #define'd values are in the
  * file pkcs11t.h.

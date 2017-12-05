@@ -45,11 +45,15 @@ typedef CK_BYTE           CK_UTF8CHAR;
 /* a BYTE-sized Boolean flag */
 typedef CK_BYTE           CK_BBOOL;
 
+#ifdef __CK_ULONG
+/* CK_LONG and CK_ULONG may already been defined (at least 32 bits long :) */
+#else
 /* an unsigned value, at least 32 bits long */
 typedef unsigned long int CK_ULONG;
 
 /* a signed value, the same size as a CK_ULONG */
 typedef long int          CK_LONG;
+#endif
 
 /* at least 32 bits; each bit is a Boolean flag */
 typedef CK_ULONG          CK_FLAGS;
