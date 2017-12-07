@@ -110,7 +110,17 @@ TEE_Result entry_cipher_init(TEE_Param *ctrl,
 		return TEE_ERROR_NOT_SUPPORTED;
 	}
 
-	// TODO: check the key attributes
+	/* Check the key attributes */
+	if (!serial_boolean_attribute_matches(sks_key->attributes, decrypt ?
+					      CKA_DECRYPT : CKA_ENCRYPT,
+					      CK_TRUE)) {
+		/* TODO: expected CK retval CKR_KEY_FUNCTION_NOT_PERMITTED */
+		MSG("Operation not permited: key is not allowed for %scryption",
+						decrypt ? "de" : "en");
+		res = TEE_ERROR_BAD_PARAMETERS;
+		goto error;
+	}
+
 	if (pkcs_session->tee_op_handle != TEE_HANDLE_NULL)
 		TEE_Panic(0);
 
