@@ -53,10 +53,11 @@ static CK_RV sanitize_class_and_type(struct serializer *dst,
 			if (dst->config == SKS_ABI_CONFIG_RAWHEAD) {
 				CK_RV rv;
 
-				dst->item_count++;
 				rv = serialize_buffer(dst, cur, next);
 				if (rv)
 					return rv;
+
+				dst->item_count++;
 			}
 
 			dst->class = class;
@@ -77,10 +78,11 @@ static CK_RV sanitize_class_and_type(struct serializer *dst,
 			if (dst->config == SKS_ABI_CONFIG_RAWHEAD) {
 				CK_RV rv;
 
-				dst->item_count++;
 				rv = serialize_buffer(dst, cur, next);
 				if (rv)
 					return rv;
+
+				dst->item_count++;
 			}
 
 			dst->type = type;
@@ -141,11 +143,12 @@ static CK_RV sanitize_boolprop(struct serializer *dst,
 	if (dst->config != SKS_ABI_CONFIG_KEYHEAD) {
 		CK_RV rv;
 
-		dst->item_count++;
-		rv = serialize_buffer(dst, cur, sizeof(*sks_ref) +
-						sks_ref->size);
+		rv = serialize_buffer(dst, cur,
+				      sizeof(*sks_ref) + sks_ref->size);
 		if (rv)
 			return rv;
+
+		dst->item_count++;
 	}
 
 	return CKR_OK;
@@ -375,10 +378,11 @@ static CK_RV sanitize_attributes_from_head(struct serializer *dst, void *src)
 			return rv;
 
 		/* It is a standard attribute reference, serializa it */
-		dst->item_count++;
 		rv = serialize_buffer(dst, cur, next);
 		if (rv)
 			return rv;
+
+		dst->item_count++;
 	}
 
 	/* sanity */
