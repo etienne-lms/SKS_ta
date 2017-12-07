@@ -21,8 +21,9 @@
 
 #define PADDED_STRING_COPY(_dst, _src) \
 	do { \
-		memset((char *)_dst, ' ', sizeof(_dst)); \
-		memcpy((char *)_dst, _src, MIN(strlen((char *)_src), sizeof(_dst))); \
+		TEE_MemFill((char *)(_dst), ' ', sizeof(_dst)); \
+		TEE_MemMove((char *)(_dst), (_src), \
+			    MIN(strlen((char *)(_src)), sizeof(_dst))); \
 	} while (0)
 
 

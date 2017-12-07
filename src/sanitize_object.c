@@ -8,7 +8,8 @@
 #include <sks_abi.h>
 #include <stdlib.h>
 #include <string.h>
-#include <tee_api.h>
+#include <tee_internal_api.h>
+#include <tee_internal_api_extensions.h>
 #include <trace.h>
 
 #include "helpers_ck.h"
@@ -35,7 +36,7 @@ static CK_RV sanitize_class_and_type(struct serializer *dst,
 
 	for (; cur < end; cur += next) {
 		/* Structure aligned copy of the sks_ref in the object */
-		memcpy(&sks_ref, cur, sizeof(sks_ref));
+		TEE_MemMove(&sks_ref, cur, sizeof(sks_ref));
 		next = sizeof(sks_ref) + sks_ref.size;
 
 		if (sks_attr_is_class(sks_ref.id)) {
@@ -43,7 +44,7 @@ static CK_RV sanitize_class_and_type(struct serializer *dst,
 			if (sks_ref.size != sks_attr_is_class(sks_ref.id))
 				return CKR_TEMPLATE_INCONSISTENT;
 
-			memcpy(&class, cur + sizeof(sks_ref), sks_ref.size);
+			TEE_MemMove(&class, cur + sizeof(sks_ref), sks_ref.size);
 
 			if (dst->class != SKS_VENDOR_UNDEFINED_ID &&
 			    dst->class != class)
@@ -68,7 +69,7 @@ static CK_RV sanitize_class_and_type(struct serializer *dst,
 			if (sks_ref.size != sks_attr_is_type(sks_ref.id))
 				return CKR_TEMPLATE_INCONSISTENT;
 
-			memcpy(&type, sks_ref.data, sks_ref.size);
+			TEE_MemMove(&type, sks_ref.data, sks_ref.size);
 
 			if (dst->type != SKS_VENDOR_UNDEFINED_ID &&
 			    dst->type != type)
@@ -166,7 +167,7 @@ static CK_RV sanitize_boolprops(struct serializer *dst,
 
 	for (; cur < end; cur += next) {
 		/* Structure aligned copy of the sks_ref in the object */
-		memcpy(&sks_ref, cur, sizeof(sks_ref));
+		TEE_MemMove(&sks_ref, cur, sizeof(sks_ref));
 		next = sizeof(sks_ref) + sks_ref.size;
 
 		rv = sanitize_boolprop(dst, &sks_ref, cur, sanity);
@@ -239,7 +240,7 @@ static CK_RV init_object_from_head(struct serializer *obj, void *ref)
 
 	reset_serial_object(obj);
 
-	memcpy(&head.raw, ref, sizeof(head.raw));
+	TEE_MemMove(&head.raw, ref, sizeof(head.raw));
 
 	switch (head.raw.version) {
 	case SKS_ABI_VERSION_CK_2_40:
@@ -248,20 +249,20 @@ static CK_RV init_object_from_head(struct serializer *obj, void *ref)
 			obj->size = sizeof(head.raw) + head.raw.blobs_size;
 			break;
 		case SKS_ABI_CONFIG_GENHEAD:
-			memcpy(&head.gen, ref, sizeof(head.gen));
+			TEE_MemMove(&head.gen, ref, sizeof(head.gen));
 			obj->size = sizeof(head.gen) + head.gen.blobs_size;
 			obj->class = head.gen.class;
 			obj->type = head.gen.type;
 			break;
 		case SKS_ABI_CONFIG_KEYHEAD:
-			memcpy(&head.key, ref, sizeof(head.key));
+			TEE_MemMove(&head.key, ref, sizeof(head.key));
 			obj->size = sizeof(head.key) + head.key.blobs_size;
 			obj->class = head.key.class;
 			obj->type = head.key.type;
-			memcpy(obj->boolprop, &head.key.boolpropl,
-				sizeof(uint32_t));
-			memcpy(obj->boolprop + 1, &head.key.boolproph,
-				sizeof(uint32_t));
+			TEE_MemMove(obj->boolprop, &head.key.boolpropl,
+				    sizeof(uint32_t));
+			TEE_MemMove(obj->boolprop + 1, &head.key.boolproph,
+				    sizeof(uint32_t));
 			break;
 		default:
 			return CKR_FUNCTION_FAILED;
@@ -294,7 +295,7 @@ static CK_RV finalize_object(struct serializer *obj)
 			head.raw.configuration = obj->config;
 			head.raw.blobs_size = obj->size - sizeof(head.raw);
 			head.raw.blobs_count = obj->item_count;
-			memcpy(obj->buffer, &head.raw, sizeof(head.raw));
+			TEE_MemMove(obj->buffer, &head.raw, sizeof(head.raw));
 			break;
 		case SKS_ABI_CONFIG_GENHEAD:
 			head.gen.version = obj->version;
@@ -303,7 +304,7 @@ static CK_RV finalize_object(struct serializer *obj)
 			head.gen.blobs_count = obj->item_count;
 			head.gen.class = obj->class;
 			head.gen.type = obj->type;
-			memcpy(obj->buffer, &head.gen, sizeof(head.gen));
+			TEE_MemMove(obj->buffer, &head.gen, sizeof(head.gen));
 			break;
 		case SKS_ABI_CONFIG_KEYHEAD:
 			head.key.version = obj->version;
@@ -314,7 +315,7 @@ static CK_RV finalize_object(struct serializer *obj)
 			head.key.type = obj->type;
 			head.key.boolpropl = obj->boolprop[0];
 			head.key.boolproph = obj->boolprop[1];
-			memcpy(obj->buffer, &head.key, sizeof(head.key));
+			TEE_MemMove(obj->buffer, &head.key, sizeof(head.key));
 			break;
 		default:
 			return CKR_FUNCTION_FAILED;
@@ -363,7 +364,7 @@ static CK_RV sanitize_attributes_from_head(struct serializer *dst, void *src)
 	for (; cur < end; cur += next) {
 		struct sks_ref sks_ref;
 
-		memcpy(&sks_ref, cur, sizeof(sks_ref));
+		TEE_MemMove(&sks_ref, cur, sizeof(sks_ref));
 		next = sizeof(sks_ref) + sks_ref.size;
 
 		if (sks_attr_is_class(sks_ref.id) ||
@@ -428,15 +429,15 @@ static CK_RV trace_attributes(char *prefix, void *src, void *end)
 	char *cur = src;
 
 	/* append 4 spaces to the prefix */
-	prefix2 = malloc(prefix_len + 1 + 4) ;
-	memcpy(prefix2, prefix, prefix_len + 1);
+	prefix2 = TEE_Malloc(prefix_len + 1 + 4, TEE_USER_MEM_HINT_NO_FILL_ZERO);
+	TEE_MemMove(prefix2, prefix, prefix_len + 1);
 	memset(prefix2 + prefix_len, ' ', 4);
 	*(prefix2 + prefix_len + 1 + 4) = '\0';
 
 	for (; cur < (char *)end; cur += next) {
 		struct sks_ref sks_ref;
 
-		memcpy(&sks_ref, cur, sizeof(sks_ref));
+		TEE_MemMove(&sks_ref, cur, sizeof(sks_ref));
 		next = sizeof(sks_ref) + sks_ref.size;
 
 		// TODO: nice ui to trace the attribute info
@@ -464,7 +465,7 @@ static CK_RV trace_attributes(char *prefix, void *src, void *end)
 		EMSG("unexpected none alignement\n");
 	}
 
-	free(prefix2);
+	TEE_Free(prefix2);
 	return CKR_OK;
 }
 
@@ -475,15 +476,15 @@ CK_RV serial_trace_attributes_from_head(char *prefix, void *ref)
 	size_t offset;
 	CK_RV rv;
 
-	memcpy(&raw, ref, sizeof(raw));
+	TEE_MemMove(&raw, ref, sizeof(raw));
 	if (raw.version != SKS_ABI_VERSION_CK_2_40)
 		return CKR_TEMPLATE_INCONSISTENT;
 
-	pre = calloc(1, prefix ? strlen(prefix) + 2 : 2) ;
+	pre = TEE_Malloc(prefix ? strlen(prefix) + 2 : 2, TEE_MALLOC_FILL_ZERO);
 	if (!pre)
 		return CKR_HOST_MEMORY;
 	if (prefix)
-		memcpy(pre, prefix, strlen(prefix));
+		TEE_MemMove(pre, prefix, strlen(prefix));
 
 	// TODO: nice ui to trace the attribute info
 	IMSG_RAW("%s,--- (serial object) Attributes list --------\n", pre);
@@ -502,14 +503,14 @@ CK_RV serial_trace_attributes_from_head(char *prefix, void *ref)
 		struct sks_obj_genhead head;
 
 		offset = sizeof(head);
-		memcpy(&head, ref, sizeof(head));
+		TEE_MemMove(&head, ref, sizeof(head));
 		IMSG_RAW("%s| class 0x%" PRIx32 "  type 0x%" PRIx32 "\n", pre,
 			head.class, head.type);
 	} else if (SKS_ABI_HEAD(raw.configuration) == SKS_ABI_CONFIG_KEYHEAD) {
 		struct sks_obj_keyhead head;
 
 		offset = sizeof(head);
-		memcpy(&head, ref, sizeof(head));
+		TEE_MemMove(&head, ref, sizeof(head));
 		IMSG_RAW("%s| class 0x%" PRIx32 "  type 0x%" PRIx32 " - boolpropl/h 0x%" PRIx32 "/0x%" PRIx32 "\n", pre,
 			head.class, head.type, head.boolpropl, head.boolproph);
 	} else {
@@ -525,7 +526,7 @@ CK_RV serial_trace_attributes_from_head(char *prefix, void *ref)
 	IMSG_RAW("%s`-----------------------\n", prefix ? prefix : "");
 
 bail:
-	free(pre);
+	TEE_Free(pre);
 	return rv;
 }
 

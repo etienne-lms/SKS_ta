@@ -256,7 +256,7 @@ char *get_serial_object_buffer(struct serializer *obj)
  */
 void reset_serial_object(struct serializer *obj)
 {
-	memset(obj, 0, sizeof(*obj));
+	TEE_MemFill(obj, 0, sizeof(*obj));
 	obj->class = SKS_VENDOR_UNDEFINED_ID;
 	obj->type = SKS_VENDOR_UNDEFINED_ID;
 }
@@ -316,7 +316,7 @@ CK_RV reset_serial_object_keyhead(struct serializer *obj)
 
 void release_serial_object(struct serializer *obj)
 {
-	free(obj->buffer);
+	TEE_Free(obj->buffer);
 }
 
 /**
@@ -346,7 +346,7 @@ CK_RV serialize(char **bstart, size_t *blen, void *data, size_t len)
 
 	return CKR_OK;
 error:
-	free(buf);
+	TEE_Free(buf);
 
 	return rv;
 }

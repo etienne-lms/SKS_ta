@@ -7,7 +7,6 @@
 
 #include <inttypes.h>
 #include <pkcs11.h>
-#include <stdlib.h>	// FIXME: for free, until serializer.c uses TEE_Realloc
 #include <string.h>	// FIXME: use TEE_MemCopy(), not memcpy()
 #include <string_ext.h>		// (for buf_compare_ct)
 #include <tee_internal_api.h>
@@ -122,7 +121,7 @@ static TEE_Result create_aes_key(uint32_t session, void *head, uint32_t *hdl)
 	 * We do not check the key attributes. At this point, key attributes
 	 * are expected consistent and reliable.
 	 */
-	obj = TEE_Malloc(sizeof(*obj), 0);
+	obj = TEE_Malloc(sizeof(*obj), TEE_USER_MEM_HINT_NO_FILL_ZERO);
 	if (!obj)
 		return TEE_ERROR_OUT_OF_MEMORY;
 
@@ -134,7 +133,7 @@ static TEE_Result create_aes_key(uint32_t session, void *head, uint32_t *hdl)
 	 * FIXME; find a better ID scheme than a random number
 	 */
 	obj->id_size = 32;
-	obj->id = TEE_Malloc(obj->id_size, 0);
+	obj->id = TEE_Malloc(obj->id_size, TEE_USER_MEM_HINT_NO_FILL_ZERO);
 	if (!obj->id)
 		return TEE_ERROR_OUT_OF_MEMORY;
 
@@ -449,7 +448,7 @@ TEE_Result entry_create_object(TEE_Param __unused *ctrl,
 
 	/* Check the attributes */
 	temp_size = ctrl->memref.size - sizeof(uint32_t);
-	temp = TEE_Malloc(temp_size, 0);
+	temp = TEE_Malloc(temp_size, TEE_USER_MEM_HINT_NO_FILL_ZERO);
 	if (!temp)
 		return TEE_ERROR_OUT_OF_MEMORY;
 
@@ -479,11 +478,10 @@ TEE_Result entry_create_object(TEE_Param __unused *ctrl,
 		return TEE_ERROR_NOT_SUPPORTED;
 	}
 
-	// TODO; change to TEE_Free(); Needs serializer to use TEE_Realloc
-	free(head);
+	TEE_Free(head);
 
 	if (res) {
-		free(obj_head);
+		TEE_Free(obj_head);
 		return res;
 	}
 

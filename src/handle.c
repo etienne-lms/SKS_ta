@@ -5,9 +5,11 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
-#include "handle.h"
 #include <stdlib.h>
-#include <string.h>
+#include <tee_internal_api.h>
+#include <tee_internal_api_extensions.h>
+
+#include "handle.h"
 
 /*
  * Define the initial capacity of the database. It should be a low number
@@ -20,7 +22,7 @@
 void handle_db_destroy(struct handle_db *db)
 {
 	if (db) {
-		free(db->ptrs);
+		TEE_Free(db->ptrs);
 		db->ptrs = NULL;
 		db->max_ptrs = 0;
 	}
@@ -48,12 +50,12 @@ int handle_get(struct handle_db *db, void *ptr)
 		new_max_ptrs = db->max_ptrs * 2;
 	else
 		new_max_ptrs = HANDLE_DB_INITIAL_MAX_PTRS;
-	p = realloc(db->ptrs, new_max_ptrs * sizeof(void *));
+	p = TEE_Realloc(db->ptrs, new_max_ptrs * sizeof(void *));
 	if (!p)
 		return -1;
 	db->ptrs = p;
-	memset(db->ptrs + db->max_ptrs, 0,
-	       (new_max_ptrs - db->max_ptrs) * sizeof(void *));
+	TEE_MemFill(db->ptrs + db->max_ptrs, 0,
+		    (new_max_ptrs - db->max_ptrs) * sizeof(void *));
 	db->max_ptrs = new_max_ptrs;
 
 	/* Since n stopped at db->max_ptrs there is an empty location there */

@@ -137,7 +137,7 @@ TEE_Result ck_token_info(TEE_Param __unused *ctrl,
 		return TEE_ERROR_SHORT_BUFFER;
 	}
 
-	memset(&info, 0, sizeof(info));
+	TEE_MemFill(&info, 0, sizeof(info));
 
 	PADDED_STRING_COPY(info.label, label);
 	PADDED_STRING_COPY(info.manufacturerID, manuf);
@@ -190,7 +190,7 @@ TEE_Result ck_token_info(TEE_Param __unused *ctrl,
 	memcpy(&info.firmwareVersion, &fwver, sizeof(fwver));
 
 	// TODO: get time and convert from refence into YYYYMMDDhhmmss/UTC
-	memset(info.utcTime, 0, sizeof(info.utcTime));
+	TEE_MemFill(info.utcTime, 0, sizeof(info.utcTime));
 
 	/* Return to caller with data */
 	memcpy(out->memref.buffer, &info, sizeof(info));
@@ -237,7 +237,7 @@ TEE_Result ck_token_mecha_info(TEE_Param *ctrl,
 		return TEE_ERROR_SHORT_BUFFER;
 	}
 
-	memset(&info, 0, sizeof(info));
+	TEE_MemFill(&info, 0, sizeof(info));
 	memcpy(&type, ctrl->memref.buffer, sizeof(type));
 
 	/* TODO: full list of supported algorithm/mechanism */
