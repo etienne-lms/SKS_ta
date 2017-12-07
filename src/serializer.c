@@ -104,13 +104,17 @@ uint32_t serial_get_type(void *ref)
 	return SKS_VENDOR_UNDEFINED_ID;
 }
 
-CK_RV serial_get_attribute_ptr(void *ref, uint32_t attribute,
-				void **attr, size_t *attr_size)
+void serial_get_attributes_ptr(void *ref, uint32_t attribute,
+				void **attr, size_t *attr_size, size_t *count)
 {
 	struct sks_obj_rawhead *raw = ref;
 	char *cur = (char *)ref + sizeof_serial_head(raw);
 	char *end = cur + raw->blobs_size;
 	size_t next;
+	size_t max_found = *count;
+	size_t found = 0;
+	void **attr_ptr = attr;
+	size_t *attr_size_ptr = attr_size;
 
 	for (; cur < end; cur += next) {
 		/* Structure aligned copy of the sks_ref in the object */
@@ -122,22 +126,41 @@ CK_RV serial_get_attribute_ptr(void *ref, uint32_t attribute,
 		if (sks_ref.id != attribute)
 			continue;
 
+		found++;
+
+		if (!max_found)
+			continue;	/* only count matching attributes */
+
 		if (attr)
-			*attr = cur + sizeof(sks_ref);
+			*attr_ptr++ = cur + sizeof(sks_ref);
 
 		if (attr_size)
-			*attr_size = sks_ref.size;
+			*attr_size_ptr++ = sks_ref.size;
 
-		return CKR_OK;
+		if (found == max_found)
+			break;
 	}
 
 	/* Sanity */
-	if (cur != end) {
-		EMSG("unexpected unalignment\n");
-		return CKR_FUNCTION_FAILED;
+	if (cur > end) {
+		DMSG("Exceeding serial object length");
+		TEE_Panic(0);
 	}
+	if (*count)
+		*count = found;
+}
 
-	return CKR_GENERAL_ERROR;		// FIXME: errno
+CK_RV serial_get_attribute_ptr(void *ref, uint32_t attribute,
+				void **attr_ptr, size_t *attr_size)
+{
+	size_t count = 1;
+
+	serial_get_attributes_ptr(ref, attribute, attr_ptr, attr_size, &count);
+
+	if (count != 1)
+		return CKR_GENERAL_ERROR;
+
+	return CKR_OK;
 }
 
 CK_RV serial_get_attribute(void *ref, uint32_t attribute,
@@ -151,8 +174,11 @@ CK_RV serial_get_attribute(void *ref, uint32_t attribute,
 	if (rv)
 		return rv;
 
-	if (attr_size && *attr_size < size)
+	if (attr_size && *attr_size != size) {
+		*attr_size = size;
+		/* This reuses buffer-to-small for any bad size matching */
 		return CKR_BUFFER_TOO_SMALL;
+	}
 
 	if (attr)
 		memcpy(attr, attr_ptr, size);

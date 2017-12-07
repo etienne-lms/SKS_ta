@@ -90,13 +90,79 @@ uint32_t serial_get_class(void *ref);
 /* Return the type of the object or the invalid ID if not found */
 uint32_t serial_get_type(void *ref);
 
-/* Get the location of target the attribute data and size */
+/*
+ * serial_get_attribute_ptr - Get location of the target attribute
+ *
+ * @ref - object attribute reference where the attribute is searched in
+ * @attribute - ID of the attribute to seach
+ * @attr_ptr - output pointer to attribute data when found.
+ * @attr_size - output byte size of the attribute data when found.
+ *
+ * If the attribute is found but non null provided attribut size does not
+ * match the found attribute, the function returns CKR_BUFFER_TOO_SMALL. This
+ * applies to both too small and too large sizes.
+ *
+ * Otherwise, return CKR_OK if attribute is found, else return non CKR_OK.
+ *
+ * If attr_ptr is not null and attribute is found, attr_ptr will store the
+ * attribute data location in memory.
+ *
+ * If attr_size is not null and attribute is found, attr_size will store the
+ * byte size of the attribute data in memory.
+ */
 CK_RV serial_get_attribute_ptr(void *ref, uint32_t attribute,
-				void **attr, size_t *attr_size);
+				void **attr_ptr, size_t *attr_size);
 
-/* Get target the attribute data content */
+/*
+ * serial_get_attribute_ptr - Get count locations of target attribute
+ *
+ * @ref - object attribute reference where the attribute is searched in
+ * @attribute - ID of the attribute to seach
+ * @attr_ptr - output pointer to attribute data when found.
+ * @attr_size - output byte size of the attribute data when found.
+ * @count - input/ouptut count of attribute occurences.
+ *
+ * Count must be a valid pointer/reference. When *count is zero, the function
+ * only counts the number of occurences of the attribute in the serial object.
+ * When *count is not zero, it value defines how many occurrences we expect to
+ * find.
+ *
+ * If attr_ptr is not null and attributes are found, each cell of attr_ptr
+ * array will store the location (address) in memory of an occurence of the
+ * target attribute.
+ *
+ * If attr_size is not null and attributes are found, each cell of attr_size
+ * array will store the byte size in memory of an occurence of the target
+ * attribute.
+ *
+ * Obviously the n'th cell referred by attr_ptr is related to the n'th cell
+ * referred by attr_size.
+ */
+void serial_get_attributes_ptr(void *ref, uint32_t attribute,
+				void **attr_ptr, size_t *attr_size, size_t *count);
+
+/*
+ * serial_get_attribute - Get target attribute data content
+ *
+ * @ref - object attribute reference where the attribute is searched in
+ * @attribute - ID of the attribute to seach
+ * @attr - NULL or output buffer where attribute data get copied to
+ * @attr_size - NULL or pointer to the byte size of the attribute data
+ *
+ * Return a value different from CKR_OK if attribute is not found and cannot
+ * be loaded in to attr and attr_size references.
+ *
+ * If attr is not null and attribute is found, attribute data get copied into
+ * attr reference.
+ *
+ * If attr_size is not null and attribute is found, attr_size stores the byte
+ * size in memory of the attribute data. Size must exacltly matches unless a
+ *
+ * FIXME: Unclear how to use this to check occurence (attr=attr_size=NULL) or
+ * check occurrence and get attribute info (data and/or byte size).
+ */
 CK_RV serial_get_attribute(void *ref, uint32_t attribute,
-				 void *attr, size_t *attr_size);
+			   void *attr, size_t *attr_size);
 
 #endif /*__SERIALIZER_H*/
 
