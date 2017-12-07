@@ -14,5 +14,7 @@
 
 TEE_Result ckr2tee(CK_RV rv);
 
+const char *cka2str(uint32_t class);
+
 #endif /*__CK2TEE_ID_H*/
 
