@@ -209,8 +209,7 @@ bool serial_attribute_value_matches(char *head, uint32_t attr,
 }
 
 /* Check attribute value matches provided blob */
-bool serial_boolean_attribute_value_matches(char *head, uint32_t attr,
-					    bool value)
+bool serial_boolean_attribute_matches(char *head, uint32_t attr, bool value)
 {
 	CK_BBOOL *ptr;
 

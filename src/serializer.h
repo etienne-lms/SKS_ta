@@ -67,8 +67,7 @@ bool serial_attribute_value_matches(char *head, uint32_t attr,
 				    void *value, size_t size);
 
 /* Check attribute value matches provided blob */
-bool serial_boolean_attribute_value_matches(char *head, uint32_t attr,
-					    bool value);
+bool serial_boolean_attribute_matches(char *head, uint32_t attr, bool value);
 
 /* Check at least the attribute is defined in the serail object */
 bool serial_boolean_attribute_is_set(char *head, uint32_t attr);
