@@ -52,7 +52,7 @@ size_t get_serial_size(void *ref)
 
 /*
  * Utilitaries on already serialized object.
- * Serailized object reference is the start address of object head.
+ * Serialized object reference is the start address of object head.
  */
 
 
