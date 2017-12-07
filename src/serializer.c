@@ -40,7 +40,7 @@ size_t sizeof_serial_head(void *ref)
 	return __sizeof_serial_head(raw.version, raw.configuration);
 }
 
-size_t get_serial_size(void *ref)
+size_t serial_get_size(void *ref)
 {
 	struct sks_obj_rawhead raw;
 

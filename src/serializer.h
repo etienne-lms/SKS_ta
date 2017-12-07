@@ -71,7 +71,7 @@ CK_RV serialize_size_and_buffer(struct serializer *obj, void *data,
 size_t sizeof_serial_head(void *ref);
 
 /* Return the size of a serial object (head + blobs size) */
-size_t get_serial_size(void *ref);
+size_t serial_get_size(void *ref);
 
 /* Return the class of the object or the invalid ID if not found */
 uint32_t serial_get_class(void *ref);

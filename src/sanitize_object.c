@@ -396,7 +396,7 @@ CK_RV serial_sanitize_attributes(void **head, void *ref, size_t ref_size)
 	struct serializer dst_obj;
 	CK_RV rv;
 
-	if (ref_size < get_serial_size(ref))
+	if (ref_size < serial_get_size(ref))
 		return CKR_FUNCTION_FAILED; // FIXME: invalid arguments
 
 	rv = reset_serial_object_rawhead(&dst_obj);
