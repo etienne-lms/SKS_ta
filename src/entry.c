@@ -10,7 +10,7 @@
 #include <tee_internal_api.h>
 #include <tee_internal_api_extensions.h>
 
-#include "pkcs11_object.h"
+#include "object.h"
 #include "pkcs11_token.h"
 #include "processing.h"
 

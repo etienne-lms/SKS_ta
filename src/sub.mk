@@ -1,5 +1,6 @@
 srcs-y += entry.c
 srcs-y += pkcs11_token.c
+srcs-y += object.c
 srcs-y += pkcs11_object.c
 srcs-y += helpers_ck.c
 srcs-y += serializer.c

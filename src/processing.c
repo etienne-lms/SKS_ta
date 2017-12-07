@@ -10,7 +10,7 @@
 #include <tee_internal_api_extensions.h>
 
 #include "ck2tee_id.h"
-#include "pkcs11_object.h"
+#include "object.h"
 #include "pkcs11_token.h"
 #include "processing.h"
 #include "serializer.h"
@@ -79,7 +79,7 @@ TEE_Result entry_cipher_init(TEE_Param *ctrl,
 
 	memcpy(&ck_mechanism, ctrl2, sizeof(ck_mechanism));
 
-	// TODO: move this into a generic function key_match_algo()
+	/* Check key main attribute (class/type) match algorithm */
 	switch (key_type) {
 	case CKK_AES:
 		tee_algo_mode = decrypt ? TEE_MODE_DECRYPT : TEE_MODE_ENCRYPT;
