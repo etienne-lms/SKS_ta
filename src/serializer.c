@@ -9,6 +9,7 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
+#include <string_ext.h>
 #include <trace.h>
 
 #include "helpers_ck.h"
@@ -160,6 +161,46 @@ CK_RV serial_get_attribute(void *ref, uint32_t attribute,
 		*attr_size = size;
 
 	return CKR_OK;
+}
+
+
+/* Check attribute value matches provided blob */
+bool serial_attribute_value_matches(char *head, uint32_t attr,
+				    void *value, size_t size)
+{
+	size_t count = 1;
+	size_t attr_size;
+	void *attr_value = TEE_Malloc(size, 0);
+	void **attr_array = &attr_value;
+
+	if (!attr_value)
+		TEE_Panic(0);		/* FIXME: really panic? */
+
+	serial_get_attributes_ptr(head, attr, attr_array, &attr_size, &count);
+
+	return (count == 1 && attr_size == size &&
+		!buf_compare_ct(value, attr_value, size));
+}
+
+/* Check attribute value matches provided blob */
+bool serial_boolean_attribute_value_matches(char *head, uint32_t attr,
+					    bool value)
+{
+	CK_BBOOL *ptr;
+
+	/*
+	 * Ref is sanitized, each boolean attribute set if consistent (unique).
+	 * CK_BBOOL type is a byte, hence no alignement issue.
+	 */
+	serial_get_attribute_ptr(head, attr, (void **)&ptr, NULL);
+
+	return !!*ptr == value;
+}
+
+/* Check at least the attribute is defined in the serial object */
+bool serial_boolean_attribute_is_set(char *head, uint32_t attr)
+{
+	return serial_get_attribute(head, attr, NULL, NULL) == CKR_OK;
 }
 
 /*

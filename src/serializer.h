@@ -62,6 +62,17 @@ CK_RV serialize_ck_ulong(struct serializer *obj, CK_ULONG data);
 CK_RV serialize_sks_ref(struct serializer *obj,
 			CK_ATTRIBUTE_TYPE id, void *data, size_t size);
 
+/* Check attribute value matches provided blob */
+bool serial_attribute_value_matches(char *head, uint32_t attr,
+				    void *value, size_t size);
+
+/* Check attribute value matches provided blob */
+bool serial_boolean_attribute_value_matches(char *head, uint32_t attr,
+					    bool value);
+
+/* Check at least the attribute is defined in the serail object */
+bool serial_boolean_attribute_is_set(char *head, uint32_t attr);
+
 /*
  * Tools on already serialized object: input referenc is the serial object
  * head address.
