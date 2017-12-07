@@ -301,14 +301,25 @@ CK_RV serialize_ck_ulong(struct serializer *obj, CK_ULONG data)
 	return serialize_buffer(obj, &data32, sizeof(data32));
 }
 
-CK_RV serialize_size_and_buffer(struct serializer *obj, void *data,
-				size_t size)
+CK_RV serialize_sks_ref(struct serializer *obj,
+			CK_ATTRIBUTE_TYPE id, void *data, size_t size)
 {
 	CK_RV rv;
+	CK_ULONG ck_size = size;
 
-	rv = serialize_ck_ulong(obj, size);
+	rv = serialize_ck_ulong(obj, id);
 	if (rv)
 		return rv;
 
-	return serialize_buffer(obj, data, size);
+	rv = serialize_ck_ulong(obj, ck_size);
+	if (rv)
+		return rv;
+
+	rv = serialize_buffer(obj, data, size);
+	if (rv)
+		return rv;
+
+	obj->item_count++;
+
+	return rv;
 }

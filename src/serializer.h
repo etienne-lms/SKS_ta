@@ -59,8 +59,8 @@ CK_RV serialize(char **bstart, size_t *blen, void *data, size_t len);
 CK_RV serialize_32b(struct serializer *obj, uint32_t data);
 CK_RV serialize_buffer(struct serializer *obj, void *data, size_t size);
 CK_RV serialize_ck_ulong(struct serializer *obj, CK_ULONG data);
-CK_RV serialize_size_and_buffer(struct serializer *obj, void *data,
-				size_t size);
+CK_RV serialize_sks_ref(struct serializer *obj,
+			CK_ATTRIBUTE_TYPE id, void *data, size_t size);
 
 /*
  * Tools on already serialized object: input referenc is the serial object
