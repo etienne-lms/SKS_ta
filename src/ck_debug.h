@@ -24,4 +24,7 @@ const char *ckr2str(CK_RV id);
  */
 TEE_Result ckr2tee(CK_RV rv);
 
+/* Return a pointer to a string buffer of "SKS_TA_CMD_xxx\0" */
+const char *skscmd2str(uint32_t id);
+
 #endif /*__SKS_CK_DEBUG_H*/

@@ -4,6 +4,7 @@
  */
 
 #include <sks_abi.h>
+#include <sks_ta.h>
 #include <ck_debug.h>
 
 #define CK2STR_ENTRY(label)	{ .id = label, .string = #label }
@@ -235,3 +236,40 @@ TEE_Result ckr2tee(CK_RV rv)
 	}
 }
 
+static struct ck2str skscmd2str_table[] = {
+	CK2STR_ENTRY(SKS_CMD_CK_PING),
+	CK2STR_ENTRY(SKS_CMD_CK_SLOTS_INFO),
+	CK2STR_ENTRY(SKS_CMD_CK_TOKEN_INFO),
+	CK2STR_ENTRY(SKS_CMD_CK_MECHANISM_IDS),
+	CK2STR_ENTRY(SKS_CMD_CK_MECHANISM_INFO),
+	CK2STR_ENTRY(SKS_CMD_CK_INIT_TOKEN),
+	CK2STR_ENTRY(SKS_CMD_CK_INIT_PIN),
+	CK2STR_ENTRY(SKS_CMD_CK_SET_PIN),
+	CK2STR_ENTRY(SKS_CMD_CK_OPEN_RO_SESSION),
+	CK2STR_ENTRY(SKS_CMD_CK_OPEN_RW_SESSION),
+	CK2STR_ENTRY(SKS_CMD_CK_CLOSE_SESSION),
+	CK2STR_ENTRY(SKS_CMD_CK_SESSION_INFO),
+	CK2STR_ENTRY(SKS_CMD_CK_CREATE_OBJECT),
+	CK2STR_ENTRY(SKS_CMD_CK_DESTROY_OBJECT),
+	CK2STR_ENTRY(SKS_CMD_CK_ENCRYPT_INIT),
+	CK2STR_ENTRY(SKS_CMD_CK_DECRYPT_INIT),
+	CK2STR_ENTRY(SKS_CMD_CK_ENCRYPT_UPDATE),
+	CK2STR_ENTRY(SKS_CMD_CK_DECRYPT_UPDATE),
+	CK2STR_ENTRY(SKS_CMD_CK_DECRYPT_FINAL),
+	CK2STR_ENTRY(SKS_CMD_CK_ENCRYPT_FINAL),
+};
+
+const char *skscmd2str(uint32_t id)
+{
+	static const char unknown[] = "<invalid-command-id>";
+	const int count = sizeof(skscmd2str_table) / sizeof(struct ck2str);
+	int n;
+
+	for (n = 0; n < count; n++) {
+		if (id == skscmd2str_table[n].id)
+			return skscmd2str_table[n].string;
+	}
+
+	return unknown;
+
+}

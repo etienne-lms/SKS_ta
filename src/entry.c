@@ -10,6 +10,7 @@
 #include <tee_internal_api.h>
 #include <tee_internal_api_extensions.h>
 
+#include "ck_debug.h"
 #include "object.h"
 #include "pkcs11_token.h"
 #include "processing.h"
@@ -65,6 +66,13 @@ TEE_Result TA_InvokeCommandEntryPoint(void __unused *session, uint32_t cmd,
 
 	if (TEE_PARAM_TYPE_GET(ptypes, 3) != TEE_PARAM_TYPE_NONE)
 		goto bad_types;
+
+	MSG("SKS TA entry: %s ctrl %" PRIu32 "@%p,"
+		" in %" PRIu32 "@%p, out %" PRIu32 "@%p",
+		skscmd2str(cmd),
+		ctrl ? ctrl->memref.size : 0, ctrl ? ctrl->memref.buffer : 0,
+		in ? in->memref.size : 0, in ? in->memref.buffer : 0,
+		out ? out->memref.size : 0, out ? out->memref.buffer : 0);
 
 	switch (cmd) {
 	case SKS_CMD_CK_PING:
