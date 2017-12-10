@@ -201,7 +201,9 @@ TEE_Result entry_create_object(TEE_Param __unused *ctrl,
 	sess_ptr = ctrl->memref.buffer;
 	session = *(uint32_t *)(void *)sess_ptr;
 
-	/* Check the attributes */
+	/*
+	 * Safely copy and sanitize the client attribute serial object
+	 */
 	temp_size = ctrl->memref.size - sizeof(uint32_t);
 	temp = TEE_Malloc(temp_size, TEE_USER_MEM_HINT_NO_FILL_ZERO);
 	if (!temp)
