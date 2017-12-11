@@ -65,7 +65,7 @@ uint32_t serial_get_class(void *ref)
 
 	rv = serial_get_attribute(ref, CKA_CLASS, &class, &class_size);
 	if (rv)
-		return CK_VENDOR_UNDEFINED_ID;
+		return SKS_UNDEFINED_ID;
 
 	return class;
 }
@@ -101,7 +101,7 @@ uint32_t serial_get_type(void *ref)
 		TEE_Panic(0);
 	}
 
-	return SKS_VENDOR_UNDEFINED_ID;
+	return SKS_UNDEFINED_ID;
 }
 
 void serial_get_attributes_ptr(void *ref, uint32_t attribute,
@@ -256,8 +256,8 @@ char *get_serial_object_buffer(struct serializer *obj)
 void reset_serial_object(struct serializer *obj)
 {
 	TEE_MemFill(obj, 0, sizeof(*obj));
-	obj->class = SKS_VENDOR_UNDEFINED_ID;
-	obj->type = SKS_VENDOR_UNDEFINED_ID;
+	obj->class = SKS_UNDEFINED_ID;
+	obj->type = SKS_UNDEFINED_ID;
 }
 
 CK_RV reset_serial_object_rawhead(struct serializer *obj)
