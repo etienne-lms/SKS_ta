@@ -51,6 +51,15 @@ size_t serial_get_size(void *ref)
 		__sizeof_serial_head(raw.version, raw.configuration);
 }
 
+size_t serial_get_count(void *ref)
+{
+	struct sks_obj_rawhead raw;
+
+	TEE_MemMove(&raw, ref, sizeof(raw));
+
+	return raw.blobs_count;
+}
+
 /*
  * Utilitaries on already serialized object.
  * Serialized object reference is the start address of object head.

@@ -80,6 +80,9 @@ bool serial_boolean_attribute_is_set(char *head, uint32_t attr);
 /* Return the size of the serial blob head or 0 on error */
 size_t sizeof_serial_head(void *ref);
 
+/* Return the number of items of the serial object (nb blobs after the head) */
+size_t serial_get_count(void *ref);
+
 /* Return the size of a serial object (head + blobs size) */
 size_t serial_get_size(void *ref);
 
