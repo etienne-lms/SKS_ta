@@ -44,7 +44,6 @@ void reset_serial_object(struct serializer *obj);
 CK_RV reset_serial_object_rawhead(struct serializer *obj);
 CK_RV reset_serial_object_genhead(struct serializer *obj);
 CK_RV reset_serial_object_keyhead(struct serializer *obj);
-CK_RV init_serial_object_from_head(struct serializer *obj, void *ref);
 CK_RV finalize_serial_object_to_head(struct serializer *obj);
 void release_serial_object(struct serializer *obj);
 

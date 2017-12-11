@@ -260,7 +260,6 @@ char *get_serial_object_buffer(struct serializer *obj)
  * TODO: rename the family into
  *	serial_object_init()
  *	serial_(raw|...)head_init()
- *	serial_object_init_from_head()
  */
 void reset_serial_object(struct serializer *obj)
 {
@@ -306,6 +305,7 @@ CK_RV reset_serial_object_genhead(struct serializer *obj)
 CK_RV reset_serial_object_keyhead(struct serializer *obj)
 {
 	struct sks_obj_keyhead head;
+
 	reset_serial_object(obj);
 
 	obj->version = SKS_ABI_VERSION_CK_2_40;
