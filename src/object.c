@@ -12,7 +12,7 @@
 #include <tee_internal_api.h>
 #include <tee_internal_api_extensions.h>
 
-#include "ck2tee_id.h"
+#include "ck_debug.h"
 #include "handle.h"
 #include "object.h"
 #include "pkcs11_object.h"

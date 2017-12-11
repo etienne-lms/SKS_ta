@@ -1,16 +1,20 @@
 /*
- * ck2tee_id.c
- *
- * Copyright (C) STMicroelectronics SA 2017
- * Author: etienne carriere <etienne.carriere@st.com> for STMicroelectronics.
+ * Copyright (c) 2017, Linaro Limited
+ * SPDX-License-Identifier: BSD-2-Clause
  */
 
-#ifndef __CK2TEE_ID_H
-#define __CK2TEE_ID_H
+#ifndef __SKS_CK_DEBUG_H
+#define __SKS_CK_DEBUG_H
 
 #include <pkcs11.h>
 #include <tee_internal_api.h>
 #include <tee_internal_api_extensions.h>
+
+/* Return a pointer to a string buffer of "CKA_xxx\0" attribute ID */
+const char *cka2str(CK_ATTRIBUTE_TYPE id);
+
+/* Return a pointer to a string buffer of "CKR_xxx\0" attribute ID */
+const char *ckr2str(CK_RV id);
 
 /*
  * Convert a CK return value ID into a TEE Internal Core API return value ID.
@@ -20,8 +24,4 @@
  */
 TEE_Result ckr2tee(CK_RV rv);
 
-/* Return a pointer to a string buffer of "CKA_xxx" attribute ID */
-const char *cka2str(uint32_t id);
-
-#endif /*__CK2TEE_ID_H*/
-
+#endif /*__SKS_CK_DEBUG_H*/
