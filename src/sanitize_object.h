@@ -1,7 +1,5 @@
 /*
- * Copyright (c) 2014-2017, Linaro Limited
- * All rights reserved.
- *
+ * Copyright (c) 2017, Linaro Limited
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
