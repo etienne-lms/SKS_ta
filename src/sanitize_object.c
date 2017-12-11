@@ -51,7 +51,8 @@ static CK_RV sanitize_class_and_type(struct serializer *dst,
 				return CKR_TEMPLATE_INCONSISTENT;
 
 			/* If class not in destination head, serialize it */
-			if (dst->config == SKS_ABI_CONFIG_RAWHEAD) {
+			if (SKS_ABI_HEAD(dst->config) ==
+			    SKS_ABI_CONFIG_RAWHEAD) {
 				CK_RV rv;
 
 				rv = serialize_buffer(dst, cur, next);
@@ -76,7 +77,8 @@ static CK_RV sanitize_class_and_type(struct serializer *dst,
 				return CKR_TEMPLATE_INCONSISTENT;
 
 			/* If type not in destination head, serialize it */
-			if (dst->config == SKS_ABI_CONFIG_RAWHEAD) {
+			if (SKS_ABI_HEAD(dst->config) ==
+			    SKS_ABI_CONFIG_RAWHEAD) {
 				CK_RV rv;
 
 				rv = serialize_buffer(dst, cur, next);
