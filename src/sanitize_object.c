@@ -10,6 +10,7 @@
 #include <tee_internal_api_extensions.h>
 #include <trace.h>
 
+#include "ck_debug.h"
 #include "helpers_ck.h"
 #include "sanitize_object.h"
 #include "serializer.h"
@@ -395,8 +396,8 @@ static CK_RV trace_attributes(char *prefix, void *src, void *end)
 		next = sizeof(sks_ref) + sks_ref.size;
 
 		// TODO: nice ui to trace the attribute info
-		IMSG("%s attr 0x%" PRIx32 "(%" PRIx32 " byte) : %02x %02x %02x %02x ...\n",
-			prefix, sks_ref.id, sks_ref.size,
+		IMSG("%s attr %s (%" PRIx32 " %" PRIx32 " byte) : %02x %02x %02x %02x ...\n",
+			prefix, cka2str(sks_ref.id), sks_ref.id, sks_ref.size,
 			*((char *)cur + sizeof(sks_ref) + 0),
 			*((char *)cur + sizeof(sks_ref) + 1),
 			*((char *)cur + sizeof(sks_ref) + 2),
@@ -458,15 +459,19 @@ CK_RV serial_trace_attributes_from_head(const char *prefix, void *ref)
 
 		offset = sizeof(head);
 		TEE_MemMove(&head, ref, sizeof(head));
-		IMSG_RAW("%s| class 0x%" PRIx32 "  type 0x%" PRIx32 "\n", pre,
-			head.class, head.type);
+		IMSG_RAW("%s| class (%" PRIx32 ") %s type (%" PRIx32 ") %s\n",
+			 pre, head.class, ckclass2str(head.class),
+			 head.type, cktype2str(head.type, head.class));
 	} else if (SKS_ABI_HEAD(raw.configuration) == SKS_ABI_CONFIG_KEYHEAD) {
 		struct sks_obj_keyhead head;
 
 		offset = sizeof(head);
 		TEE_MemMove(&head, ref, sizeof(head));
-		IMSG_RAW("%s| class 0x%" PRIx32 "  type 0x%" PRIx32 " - boolpropl/h 0x%" PRIx32 "/0x%" PRIx32 "\n", pre,
-			head.class, head.type, head.boolpropl, head.boolproph);
+		IMSG_RAW("%s| class (%" PRIx32 ") %s type (%" PRIx32 ") %s"
+			 " - boolpropl/h 0x%" PRIx32 "/0x%" PRIx32 "\n",
+			 pre, head.class, ckclass2str(head.class),
+			 head.type, cktype2str(head.type, head.class),
+			 head.boolpropl, head.boolproph);
 	} else {
 		rv = CKR_TEMPLATE_INCONSISTENT;
 		goto bail;
