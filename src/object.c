@@ -61,17 +61,6 @@ static TEE_Result create_aes_key(struct pkcs11_session *session,
 	obj->key_handle = TEE_HANDLE_NULL;
 	obj->attributes = head;
 
-	/*
-	 * Create a unique ID
-	 * FIXME; find a better ID scheme than a random number
-	 */
-	obj->id_size = 32;
-	obj->id = TEE_Malloc(obj->id_size, TEE_USER_MEM_HINT_NO_FILL_ZERO);
-	if (!obj->id)
-		return TEE_ERROR_OUT_OF_MEMORY;
-
-	TEE_GenerateRandom(obj->id, obj->id_size);
-
 	/* Get the key data from the serial object */
 	rv = serial_get_attribute(head, CKA_VALUE, NULL, &key_size);
 	if (rv != CKR_BUFFER_TOO_SMALL)
@@ -103,6 +92,17 @@ static TEE_Result create_aes_key(struct pkcs11_session *session,
 
 	if (is_persistent) {
 		TEE_ObjectHandle handle = obj->key_handle;
+
+		/*
+		 * Create a unique ID
+		 * FIXME; find a better ID scheme than a random number
+		 */
+		obj->id_size = 32;
+		obj->id = TEE_Malloc(obj->id_size, TEE_USER_MEM_HINT_NO_FILL_ZERO);
+		if (!obj->id)
+			return TEE_ERROR_OUT_OF_MEMORY;
+
+		TEE_GenerateRandom(obj->id, obj->id_size);
 
 		res = TEE_CreatePersistentObject(TEE_STORAGE_PRIVATE,
 						 obj->id, obj->id_size,
