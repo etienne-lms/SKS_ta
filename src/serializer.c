@@ -34,7 +34,7 @@ size_t sizeof_serial_head(void *ref)
 {
 	struct sks_obj_rawhead raw;
 
-	memcpy(&raw, ref, sizeof(raw));
+	TEE_MemMove(&raw, ref, sizeof(raw));
 
 	return __sizeof_serial_head(raw.version, raw.configuration);
 }
@@ -43,7 +43,7 @@ size_t serial_get_size(void *ref)
 {
 	struct sks_obj_rawhead raw;
 
-	memcpy(&raw, ref, sizeof(raw));
+	TEE_MemMove(&raw, ref, sizeof(raw));
 
 	return raw.blobs_size +
 		__sizeof_serial_head(raw.version, raw.configuration);
@@ -89,7 +89,7 @@ uint32_t serial_get_type(void *ref)
 		/* Structure aligned copy of the sks_ref in the object */
 		struct sks_ref sks_ref;
 
-		memcpy(&sks_ref, cur, sizeof(sks_ref));
+		TEE_MemMove(&sks_ref, cur, sizeof(sks_ref));
 		next = sizeof(sks_ref) + sks_ref.size;
 
 		if (!sks_attr_is_type(sks_ref.id))
@@ -98,7 +98,7 @@ uint32_t serial_get_type(void *ref)
 		if (sks_ref.size != sizeof(uint32_t))
 			TEE_Panic(0);
 
-		memcpy(&type, cur + sizeof(sks_ref), sks_ref.size);
+		TEE_MemMove(&type, cur + sizeof(sks_ref), sks_ref.size);
 		return type;
 	}
 
@@ -127,7 +127,7 @@ void serial_get_attributes_ptr(void *ref, uint32_t attribute,
 		/* Structure aligned copy of the sks_ref in the object */
 		struct sks_ref sks_ref;
 
-		memcpy(&sks_ref, cur, sizeof(sks_ref));
+		TEE_MemMove(&sks_ref, cur, sizeof(sks_ref));
 		next = sizeof(sks_ref) + sks_ref.size;
 
 		if (sks_ref.id != attribute)
@@ -188,7 +188,7 @@ CK_RV serial_get_attribute(void *ref, uint32_t attribute,
 	}
 
 	if (attr)
-		memcpy(attr, attr_ptr, size);
+		TEE_MemMove(attr, attr_ptr, size);
 
 	if (attr_size)
 		*attr_size = size;
@@ -341,7 +341,7 @@ CK_RV serialize(char **bstart, size_t *blen, void *data, size_t len)
 	if (!buf)
 		return CKR_DEVICE_MEMORY;
 
-	memcpy(buf + *blen, data, len);
+	TEE_MemMove(buf + *blen, data, len);
 
 	*blen = nlen;
 	*bstart = buf;

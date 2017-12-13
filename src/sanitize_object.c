@@ -434,7 +434,7 @@ static CK_RV trace_attributes(char *prefix, void *src, void *end)
 		return CKR_DEVICE_MEMORY;
 
 	TEE_MemMove(prefix2, prefix, prefix_len + 1);
-	memset(prefix2 + prefix_len, ' ', 4);
+	TEE_MemFill(prefix2 + prefix_len, ' ', 4);
 	*(prefix2 + prefix_len + 4) = '\0';
 
 	for (; cur < (char *)end; cur += next) {
