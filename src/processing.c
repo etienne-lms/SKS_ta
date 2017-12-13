@@ -118,7 +118,8 @@ static TEE_Result tee_operarion_params(struct tee_operation_params *params,
  * in = none
  * out = none
  */
-TEE_Result entry_cipher_init(TEE_Param *ctrl,
+TEE_Result entry_cipher_init(int teesess,
+				TEE_Param *ctrl,
 				TEE_Param *in,
 				TEE_Param *out,
 				int decrypt)
@@ -143,7 +144,7 @@ TEE_Result entry_cipher_init(TEE_Param *ctrl,
 	ctrl2_size -= sizeof(uint32_t);
 
 	pkcs_session = get_pkcs_session(session);
-	if (!pkcs_session) {
+	if (!pkcs_session || pkcs_session->tee_session != teesess) {
 		res = TEE_ERROR_BAD_PARAMETERS;
 		goto error;
 	}
@@ -232,7 +233,8 @@ error:
  * in = data buffer
  * out = data buffer
  */
-TEE_Result entry_cipher_update(TEE_Param *ctrl,
+TEE_Result entry_cipher_update(int teesess,
+				TEE_Param *ctrl,
 				TEE_Param *in,
 				TEE_Param *out,
 				int decrypt)
@@ -246,7 +248,7 @@ TEE_Result entry_cipher_update(TEE_Param *ctrl,
 	session = *(uint32_t *)(void *)ctrl->memref.buffer;;
 
 	pkcs_session = get_pkcs_session(session);
-	if (!pkcs_session)
+	if (!pkcs_session || pkcs_session->tee_session != teesess)
 		return TEE_ERROR_BAD_PARAMETERS;
 
 	if (check_pkcs_session_processing_state(session, decrypt ?
@@ -264,7 +266,8 @@ TEE_Result entry_cipher_update(TEE_Param *ctrl,
  * in = none
  * out = data buffer
  */
-TEE_Result entry_cipher_final(TEE_Param *ctrl,
+TEE_Result entry_cipher_final(int teesess,
+				TEE_Param *ctrl,
 				TEE_Param *in,
 				TEE_Param *out,
 				int __unused decrypt)
@@ -280,7 +283,7 @@ TEE_Result entry_cipher_final(TEE_Param *ctrl,
 	session = *(uint32_t *)(void *)ctrl->memref.buffer;;
 
 	pkcs_session = get_pkcs_session(session);
-	if (!pkcs_session)
+	if (!pkcs_session || pkcs_session->tee_session != teesess)
 		return TEE_ERROR_BAD_PARAMETERS;
 
 	if (check_pkcs_session_processing_state(session, decrypt ?

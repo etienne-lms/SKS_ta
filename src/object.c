@@ -14,6 +14,7 @@
 #include "handle.h"
 #include "object.h"
 #include "pkcs11_object.h"
+#include "pkcs11_token.h"
 #include "sanitize_object.h"
 #include "serializer.h"
 
@@ -38,7 +39,8 @@ struct sks_key_object *object_get_tee_handle(uint32_t ck_handle)
  * @head - serialized attributes (incl. CKA_VALUE attribute storing the key)
  * @hld - object handle returned to hte client
  */
-static TEE_Result create_aes_key(uint32_t session, void *head, uint32_t *hdl)
+static TEE_Result create_aes_key(struct pkcs11_session *session,
+				 void *head, uint32_t *hdl)
 {
 	CK_RV rv;
 	TEE_Result res;
@@ -147,7 +149,8 @@ bail:
 }
 
 
-static TEE_Result create_sym_key(uint32_t session, void *head, uint32_t *hdl)
+static TEE_Result create_sym_key(struct pkcs11_session *session,
+				 void *head, uint32_t *hdl)
 {
 	switch (serial_get_type(head)) {
 	case CKK_AES:
@@ -164,7 +167,7 @@ static TEE_Result create_sym_key(uint32_t session, void *head, uint32_t *hdl)
  * @head - pointer to serialized attributes
  * @hld - object handle returned to hte client
  */
-static TEE_Result create_data_blob(uint32_t __unused session,
+static TEE_Result create_data_blob(struct pkcs11_session __unused *session,
 				   void __unused *head, uint32_t __unused *hdl)
 {
 	// TODO
@@ -178,14 +181,16 @@ static TEE_Result create_data_blob(uint32_t __unused session,
 /*
  * Create an object from a clear content provided by client
  */
-TEE_Result entry_create_object(TEE_Param __unused *ctrl,
+TEE_Result entry_create_object(int teesess,
+				TEE_Param __unused *ctrl,
 				TEE_Param __unused *in,
 				TEE_Param __unused *out)
 {
 	TEE_Result res;
 	CK_RV rv;
 	char *sess_ptr;
-	uint32_t session;
+	uint32_t ck_session;
+	struct pkcs11_session *session;
 	char *head;
 	uint32_t obj_handle;
 	void *temp;
@@ -195,9 +200,12 @@ TEE_Result entry_create_object(TEE_Param __unused *ctrl,
 	if (!ctrl || in || !out || out->memref.size < sizeof(uint32_t))
 		return TEE_ERROR_BAD_PARAMETERS;
 
-	/* TODO: check session handle */
 	sess_ptr = ctrl->memref.buffer;
-	session = *(uint32_t *)(void *)sess_ptr;
+	ck_session = *(uint32_t *)(void *)sess_ptr;
+
+	session = get_pkcs_session(ck_session);
+	if (!session || session->tee_session != teesess)
+		return TEE_ERROR_BAD_PARAMETERS;
 
 	/*
 	 * Safely copy and sanitize the client attribute serial object
@@ -240,13 +248,15 @@ TEE_Result entry_create_object(TEE_Param __unused *ctrl,
 		return res;
 	}
 
+	/* Return object handle to the client */
 	memcpy(out->memref.buffer, &obj_handle, sizeof(uint32_t));
 	out->memref.size = sizeof(uint32_t);
 
 	return res;
 }
 
-TEE_Result entry_destroy_object(TEE_Param __unused *ctrl,
+TEE_Result entry_destroy_object(int __unused teesess,
+				TEE_Param __unused *ctrl,
 				TEE_Param __unused *in,
 				TEE_Param __unused *out)
 {

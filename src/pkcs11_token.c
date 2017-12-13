@@ -516,8 +516,9 @@ TEE_Result ck_token_mecha_info(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out)
 	return TEE_SUCCESS;
 }
 
-/* ctrl=unused, in=unused, out=[session-handle] */
-TEE_Result ck_token_ro_session(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out)
+/* ctrl=[slot-id], in=unused, out=[session-handle] */
+static TEE_Result ck_token_session(int teesess, TEE_Param *ctrl,
+				   TEE_Param *in, TEE_Param *out, bool ro)
 {
 	struct pkcs11_session *session;
 	uint32_t token_id;
@@ -537,12 +538,18 @@ TEE_Result ck_token_ro_session(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out)
 	if (!token)
 		return TEE_ERROR_BAD_PARAMETERS;
 
+	if (!ro && token->session_state == PKCS11_TOKEN_STATE_READ_ONLY) {
+		// TODO: if token is read-only, refuse RW sessions
+		// See CKR_SESSION_READ_WRITE_SO_EXISTS
+		return TEE_ERROR_GENERIC;
+	}
+
 	session = TEE_Malloc(sizeof(*session), 0);
 	if (!session)
 		return TEE_ERROR_OUT_OF_MEMORY;
 
-	/* TODO: get and store the related OP-TEE session handle */
 	session->handle = handle_get(&session_handle_db, session);
+	session->tee_session = teesess;
 	session->processing = PKCS11_SESSION_READY;
 	session->tee_op_handle = TEE_HANDLE_NULL;
 
@@ -554,45 +561,18 @@ TEE_Result ck_token_ro_session(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out)
 	return TEE_SUCCESS;
 }
 
-/* ctrl=unused, in=unused, out=[session-handle] */
-TEE_Result ck_token_rw_session(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out)
+/* ctrl=[slot-id], in=unused, out=[session-handle] */
+TEE_Result ck_token_ro_session(int teesess, TEE_Param *ctrl,
+				TEE_Param *in, TEE_Param *out)
 {
-	struct pkcs11_session *session;
-	uint32_t token_id;
-	struct ck_token *token;
+	return ck_token_session(teesess, ctrl, in, out, true);
+}
 
-	if (!ctrl || in || !out)
-		return TEE_ERROR_BAD_PARAMETERS;
-
-	if (out->memref.size < sizeof(uint32_t))
-		return TEE_ERROR_BAD_PARAMETERS;
-
-	if (ctrl->memref.size != sizeof(uint32_t))
-		return TEE_ERROR_BAD_PARAMETERS;
-
-	TEE_MemMove(&token_id, ctrl->memref.buffer, sizeof(uint32_t));
-	token = get_token(token_id);
-	if (!token)
-		return TEE_ERROR_BAD_PARAMETERS;
-
-	// TODO: if token is read-only, refuse RW sessions
-	// See CKR_SESSION_READ_WRITE_SO_EXISTS
-
-	session = TEE_Malloc(sizeof(*session), 0);
-	if (!session)
-		return TEE_ERROR_OUT_OF_MEMORY;
-
-	/* TODO: get and store the related OP-TEE session handle */
-	session->handle = handle_get(&session_handle_db, session);
-	session->processing = PKCS11_SESSION_READY;
-	session->tee_op_handle = TEE_HANDLE_NULL;
-
-	LIST_INSERT_HEAD(&token->session_list, session, link);
-
-	*(uint32_t *)out->memref.buffer = session->handle;
-	out->memref.size = sizeof(uint32_t);
-
-	return TEE_SUCCESS;
+/* ctrl=[slot-id], in=unused, out=[session-handle] */
+TEE_Result ck_token_rw_session(int teesess, TEE_Param *ctrl,
+				TEE_Param *in, TEE_Param *out)
+{
+	return ck_token_session(teesess, ctrl, in, out, false);
 }
 
 static void close_ck_session(struct pkcs11_session *session)
@@ -614,7 +594,8 @@ static void close_ck_session(struct pkcs11_session *session)
 }
 
 /* ctrl=[session-handle], in=unused, out=unused */
-TEE_Result ck_token_close_session(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out)
+TEE_Result ck_token_close_session(int teesess, TEE_Param *ctrl,
+				  TEE_Param *in, TEE_Param *out)
 {
 	struct pkcs11_session *session;
 	uint32_t handle;
@@ -627,12 +608,16 @@ TEE_Result ck_token_close_session(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out
 	if (!session)
 		return TEE_ERROR_BAD_PARAMETERS;
 
+	if (session->tee_session != teesess)
+		return TEE_ERROR_BAD_PARAMETERS;
+
 	close_ck_session(session);
 
 	return TEE_SUCCESS;
 }
 
-TEE_Result ck_token_close_all(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out)
+TEE_Result ck_token_close_all(int teesess, TEE_Param *ctrl,
+			      TEE_Param *in, TEE_Param *out)
 {
 	uint32_t token_id;
 	struct ck_token *token;
@@ -652,8 +637,36 @@ TEE_Result ck_token_close_all(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out)
 	if (!token)
 		return TEE_ERROR_BAD_PARAMETERS;
 
-	LIST_FOREACH(session, &token->session_list, link)
+	LIST_FOREACH(session, &token->session_list, link) {
+		if (session->tee_session != teesess)
+			continue;
+
 		close_ck_session(session);
+	}
 
 	return TEE_SUCCESS;
+}
+
+/*
+ * Parse all tokens and all session. Close all session that are relying on
+ * the target TEE session ID which is being closed by caller.
+ */
+void ck_token_close_tee_session(int tee_session)
+{
+	struct ck_token *token;
+	struct pkcs11_session *session;
+	int n;
+
+	for (n = 0; n < TOKEN_COUNT; n++) {
+		token = get_token(n);
+		if (!token)
+			continue;
+
+		LIST_FOREACH(session, &token->session_list, link) {
+			if (session->tee_session != tee_session)
+				continue;
+
+			close_ck_session(session);
+		}
+	}
 }

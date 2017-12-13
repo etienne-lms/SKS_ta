@@ -9,7 +9,7 @@
 #include <tee_internal_api.h>
 
 struct sks_key_object {
-	uint32_t session_owner;
+	void *session_owner;
 	uint32_t ck_handle;
 	/* poitner tho the serialized key attributes */
 	void *attributes;
@@ -27,7 +27,10 @@ struct sks_key_object {
 
 struct sks_key_object *object_get_tee_handle(uint32_t ck_handle);
 
-TEE_Result entry_create_object(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out);
-TEE_Result entry_destroy_object(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out);
+TEE_Result entry_create_object(int teesess, TEE_Param *ctrl,
+				TEE_Param *in, TEE_Param *out);
+
+TEE_Result entry_destroy_object(int teesess, TEE_Param *ctrl,
+				TEE_Param *in, TEE_Param *out);
 
 #endif /*__SKS_OBJECT_H*/
