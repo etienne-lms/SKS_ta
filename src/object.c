@@ -32,6 +32,57 @@ struct sks_key_object *object_get_tee_handle(uint32_t ck_handle)
 }
 
 /*
+ * Destroy an object
+ *
+ * @session - session requesting object destruction
+ * @hld - object handle returned to hte client
+ */
+TEE_Result destroy_object(struct pkcs11_session *session,
+			  struct sks_key_object *object,
+			  bool session_only)
+{
+	CK_BBOOL is_persistent;
+	struct pkcs11_session *obj_session;
+
+	// TODO: debug trace
+	//serial_trace_attributes_from_head("[destroy]", object->attributes);
+
+	/*
+	 * Objects are reachable only from their context.
+	 * We only support pkcs11 session for now: check object token id.
+	 */
+	obj_session = object->session_owner;
+	if (obj_session->token != session->token)
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	if (serial_get_attribute(object->attributes, CKA_TOKEN,
+				 &is_persistent, NULL))
+		TEE_Panic(0);
+
+	if (is_persistent) {
+		if (object->key_handle != TEE_HANDLE_NULL && session_only)
+			TEE_CloseObject(object->key_handle);
+
+		if (object->key_handle != TEE_HANDLE_NULL && !session_only)
+			TEE_CloseAndDeletePersistentObject1(object->key_handle);
+
+		TEE_Free(object->id);
+	} else {
+		/* Session object are reacheable only from their session */
+		if (obj_session != session)
+			return TEE_ERROR_BAD_PARAMETERS;
+
+		if (object->key_handle != TEE_HANDLE_NULL)
+			TEE_FreeTransientObject(object->key_handle);
+	}
+
+	LIST_REMOVE(object, link);
+	TEE_Free(object);
+
+	return TEE_SUCCESS;
+}
+
+/*
  * Create an AES key object
  *
  * @session - session onwing the object creation
@@ -125,6 +176,9 @@ static TEE_Result create_aes_key(struct pkcs11_session *session,
 
 	obj->session_owner = session;
 	LIST_INSERT_HEAD(&session->object_list, obj, link);
+
+	// TODO: debug trace
+	//serial_trace_attributes_from_head("[create]", object->attributes);
 
 	res = TEE_SUCCESS;
 
@@ -249,9 +303,47 @@ TEE_Result entry_create_object(int teesess, TEE_Param *ctrl,
 	return res;
 }
 
-TEE_Result entry_destroy_object(int __unused teesess,
-				TEE_Param __unused *ctrl,
-				TEE_Param __unused *in,
-				TEE_Param __unused *out)
+TEE_Result entry_destroy_object(int teesess, TEE_Param *ctrl,
+				TEE_Param *in,	TEE_Param *out)
 {
+	size_t ctrl_size;
+	char *ctrl_ptr;
+	uint32_t session_handle;
+	uint32_t object_handle;
+	struct pkcs11_session *session;
+	struct sks_key_object *object;
+
+	if (!ctrl || in || out)
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	ctrl_size = ctrl->memref.size;
+	ctrl_ptr = ctrl->memref.buffer;
+
+	/* First serial arg: [32b-session-handle] */
+	if (ctrl_size < sizeof(uint32_t))
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	TEE_MemMove(&session_handle, ctrl_ptr, sizeof(uint32_t));
+	ctrl_ptr += sizeof(uint32_t);
+	ctrl_size -= sizeof(uint32_t);
+
+	session = get_pkcs_session(session_handle);
+
+	if (!session || session->tee_session != teesess)
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	/* Next serial arg: [32b-object-handle] */
+	if (ctrl_size < sizeof(uint32_t))
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	TEE_MemMove(&object_handle, ctrl_ptr, sizeof(uint32_t));
+	ctrl_ptr += sizeof(uint32_t);
+	ctrl_size -= sizeof(uint32_t);
+
+	object = object_get_tee_handle(object_handle);
+
+	if (!object || object->session_owner != session)
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	return destroy_object(session, object, false);
 }

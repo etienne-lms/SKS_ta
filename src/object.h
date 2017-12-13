@@ -39,4 +39,8 @@ TEE_Result entry_create_object(int teesess, TEE_Param *ctrl,
 TEE_Result entry_destroy_object(int teesess, TEE_Param *ctrl,
 				TEE_Param *in, TEE_Param *out);
 
+TEE_Result destroy_object(struct pkcs11_session *session,
+			  struct sks_key_object *object,
+			  bool session_object_only);
+
 #endif /*__SKS_OBJECT_H*/

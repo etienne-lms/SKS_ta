@@ -584,8 +584,7 @@ static void close_ck_session(struct pkcs11_session *session)
 		TEE_FreeOperation(session->tee_op_handle);
 
 	while (!LIST_EMPTY(&session->object_list)) {
-		// TODO: destroy all object belonging to the session
-		//destroy_object(session, LIST_FIRST(&session->object_list), true);
+		destroy_object(session, LIST_FIRST(&session->object_list), true);
 	}
 
 	LIST_REMOVE(session, link);
