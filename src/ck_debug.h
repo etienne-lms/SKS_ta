@@ -27,4 +27,9 @@ TEE_Result ckr2tee(CK_RV rv);
 /* Return a pointer to a string buffer of "SKS_TA_CMD_xxx\0" */
 const char *skscmd2str(uint32_t id);
 
+/* Allocate and return a string descripbing the enabled flags */
+char *ck_slot_flag2str(CK_ULONG flags);
+char *ck_token_flag2str(CK_ULONG flags);
+char *ck_mecha_flag2str(CK_ULONG flags);
+
 #endif /*__SKS_CK_DEBUG_H*/

@@ -5,7 +5,12 @@
 
 #include <sks_abi.h>
 #include <sks_ta.h>
-#include <ck_debug.h>
+#include <stdio.h>
+#include <string.h>
+#include <tee_internal_api.h>
+#include <tee_internal_api_extensions.h>
+
+#include "ck_debug.h"
 
 #define CK2STR_ENTRY(label)	{ .id = label, .string = #label }
 
@@ -227,6 +232,8 @@ TEE_Result ckr2tee(CK_RV rv)
 	switch (rv) {
 	case CKR_OK:
 		return TEE_SUCCESS;
+	case CKR_ARGUMENTS_BAD:
+		return TEE_ERROR_BAD_PARAMETERS;
 	case CKR_DEVICE_MEMORY:
 		return TEE_ERROR_OUT_OF_MEMORY;
 	case CKR_BUFFER_TOO_SMALL:
@@ -272,4 +279,170 @@ const char *skscmd2str(uint32_t id)
 
 	return unknown;
 
+}
+
+static struct ck2str slotflag2str_table[] = {
+	CK2STR_ENTRY(CKF_TOKEN_PRESENT),
+	CK2STR_ENTRY(CKF_REMOVABLE_DEVICE),
+	CK2STR_ENTRY(CKF_HW_SLOT),
+};
+
+static const char *slot_flags2str(CK_ULONG flags)
+{
+	const int count = sizeof(slotflag2str_table) / sizeof(struct ck2str);
+	int n;
+
+	for (n = 0; n < count; n++) {
+		if (flags & slotflag2str_table[n].id)
+			return slotflag2str_table[n].string;
+	}
+
+	return NULL;
+}
+
+static struct ck2str tokenflag2str_table[] = {
+	CK2STR_ENTRY(CKF_RNG),
+	CK2STR_ENTRY(CKF_WRITE_PROTECTED),
+	CK2STR_ENTRY(CKF_LOGIN_REQUIRED),
+	CK2STR_ENTRY(CKF_USER_PIN_INITIALIZED),
+	CK2STR_ENTRY(CKF_RESTORE_KEY_NOT_NEEDED),
+	CK2STR_ENTRY(CKF_CLOCK_ON_TOKEN),
+	CK2STR_ENTRY(CKF_PROTECTED_AUTHENTICATION_PATH),
+	CK2STR_ENTRY(CKF_DUAL_CRYPTO_OPERATIONS),
+	CK2STR_ENTRY(CKF_TOKEN_INITIALIZED),
+	CK2STR_ENTRY(CKF_SECONDARY_AUTHENTICATION),
+	CK2STR_ENTRY(CKF_USER_PIN_COUNT_LOW),
+	CK2STR_ENTRY(CKF_USER_PIN_FINAL_TRY),
+	CK2STR_ENTRY(CKF_USER_PIN_LOCKED),
+	CK2STR_ENTRY(CKF_USER_PIN_TO_BE_CHANGED),
+	CK2STR_ENTRY(CKF_SO_PIN_COUNT_LOW),
+	CK2STR_ENTRY(CKF_SO_PIN_FINAL_TRY),
+	CK2STR_ENTRY(CKF_SO_PIN_LOCKED),
+	CK2STR_ENTRY(CKF_SO_PIN_TO_BE_CHANGED),
+	CK2STR_ENTRY(CKF_ERROR_STATE),
+};
+
+static const char *token_flags2str(CK_ULONG flags)
+{
+	const int count = sizeof(tokenflag2str_table) / sizeof(struct ck2str);
+	int n;
+
+	for (n = 0; n < count; n++) {
+		if (flags & tokenflag2str_table[n].id)
+			return tokenflag2str_table[n].string;
+	}
+
+	return NULL;
+}
+
+static struct ck2str mechaflag2str_table[] = {
+	CK2STR_ENTRY(CKF_HW),
+	CK2STR_ENTRY(CKF_ENCRYPT),
+	CK2STR_ENTRY(CKF_DECRYPT),
+	CK2STR_ENTRY(CKF_DIGEST),
+	CK2STR_ENTRY(CKF_SIGN),
+	CK2STR_ENTRY(CKF_SIGN_RECOVER),
+	CK2STR_ENTRY(CKF_VERIFY),
+	CK2STR_ENTRY(CKF_VERIFY_RECOVER),
+	CK2STR_ENTRY(CKF_GENERATE),
+	CK2STR_ENTRY(CKF_GENERATE_KEY_PAIR),
+	CK2STR_ENTRY(CKF_WRAP),
+	CK2STR_ENTRY(CKF_UNWRAP),
+	CK2STR_ENTRY(CKF_DERIVE),
+	CK2STR_ENTRY(CKF_EC_F_P),
+	CK2STR_ENTRY(CKF_EC_F_2M),
+	CK2STR_ENTRY(CKF_EC_ECPARAMETERS),
+	CK2STR_ENTRY(CKF_EC_NAMEDCURVE),
+	CK2STR_ENTRY(CKF_EC_UNCOMPRESS),
+	CK2STR_ENTRY(CKF_EC_COMPRESS),
+	CK2STR_ENTRY(CKF_EXTENSION),
+};
+
+static const char *mecha_flags2str(CK_ULONG flags)
+{
+	const int count = sizeof(mechaflag2str_table) / sizeof(struct ck2str);
+	int n;
+
+	for (n = 0; n < count; n++) {
+		if (flags & mechaflag2str_table[n].id)
+			return mechaflag2str_table[n].string;
+	}
+
+	return NULL;
+}
+
+enum ck_debug_flag_type {
+	CKDBG_SLOT,
+	CKDBG_TOKEN,
+	CKDBG_KEY,
+	CKDBG_CERTIF,
+	CKDBG_MECHA,
+};
+
+static char *__flag2str(CK_ULONG flags, enum ck_debug_flag_type type)
+{
+	char *str = NULL;
+	size_t size = 0;
+	int mask = 1;
+
+	for (mask = 1; flags && mask; flags &= ~mask, mask = mask << 1) {
+		char const *label = NULL;
+		size_t label_size;
+		char *nstr;
+
+		if (!(flags & mask))
+			continue;
+
+		switch(type) {
+		case CKDBG_SLOT:
+			label = slot_flags2str(mask);
+			break;
+		case CKDBG_TOKEN:
+			label = token_flags2str(mask);
+			break;
+		case CKDBG_MECHA:
+			label = mecha_flags2str(mask);
+			break;
+		default:
+			return NULL;
+		}
+
+		if (!label)
+			continue;
+
+		/* 4 digit prefix "CKF_" is not dumped */
+		if (!memcmp(label, "CKF_", 4))
+			label += 4;
+
+		/* Extra space digit */
+		label_size = strlen(label) + 1;
+
+		/* Always allocate 1 more digit for terminal '\0' */
+		nstr = TEE_Realloc(str, size + label_size + 1);
+		if (!nstr) {
+			TEE_Free(str);
+			return NULL;
+		}
+
+		snprintf(nstr + size, label_size + 1, "%s ", label);
+		str = nstr;
+		size += label_size;
+	}
+
+	return str;
+}
+
+char *ck_slot_flag2str(CK_ULONG flags)
+{
+	return __flag2str(flags, CKDBG_SLOT);
+}
+
+char *ck_token_flag2str(CK_ULONG flags)
+{
+	return __flag2str(flags, CKDBG_TOKEN);
+}
+
+char *ck_mecha_flag2str(CK_ULONG flags)
+{
+	return __flag2str(flags, CKDBG_MECHA);
 }
