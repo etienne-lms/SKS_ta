@@ -144,6 +144,7 @@ TEE_Result ck_token_logout(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out);
 TEE_Result ck_token_ro_session(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out);
 TEE_Result ck_token_rw_session(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out);
 TEE_Result ck_token_close_session(TEE_Param *ctrl, TEE_Param *i, TEE_Param *o);
+TEE_Result ck_token_close_all(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out);
 
 struct pkcs11_session *get_pkcs_session(uint32_t ck_handle);
 int set_pkcs_session_processing_state(uint32_t ck_session,

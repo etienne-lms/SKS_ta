@@ -165,6 +165,13 @@ struct sks_ck_token_info {
  */
 #define SKS_CMD_CK_SLOT_LIST		TA_SKS_CMD_CRYPTOKI(0x00000c)
 
+/*
+ * request args:	[32b-slot-id]
+ * input data:		none
+ * output data:		none
+ */
+#define SKS_CMD_CK_CLOSE_ALL_SESSIONS	TA_SKS_CMD_CRYPTOKI(0x00000d)
+
 /* Commands for operations on keys */
 
 /*

@@ -95,6 +95,8 @@ TEE_Result TA_InvokeCommandEntryPoint(void __unused *session, uint32_t cmd,
 		return ck_token_rw_session(ctrl, in, out);
 	case SKS_CMD_CK_CLOSE_SESSION:
 		return ck_token_close_session(ctrl, in, out);
+	case SKS_CMD_CK_CLOSE_ALL_SESSIONS:
+		return ck_token_close_all(ctrl, in, out);
 
 	case SKS_CMD_CK_CREATE_OBJECT:
 		return entry_create_object(ctrl, in, out);

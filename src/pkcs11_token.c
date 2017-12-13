@@ -595,6 +595,24 @@ TEE_Result ck_token_rw_session(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out)
 	return TEE_SUCCESS;
 }
 
+static void close_ck_session(struct pkcs11_session *session)
+{
+	(void)handle_put(&session_handle_db, session->handle);
+
+	LIST_REMOVE(session, link);
+
+	if (session->tee_op_handle != TEE_HANDLE_NULL)
+		TEE_FreeOperation(session->tee_op_handle);
+
+	TEE_Free(session);
+
+	// TODO: destroy all non-persistent objects owned by the session
+
+	// TODO: unregister session handle from the token's session list
+
+	// TODO: if last session closed, token moves to Public state
+}
+
 /* ctrl=[session-handle], in=unused, out=unused */
 TEE_Result ck_token_close_session(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out)
 {
@@ -605,20 +623,37 @@ TEE_Result ck_token_close_session(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out
 		return TEE_ERROR_BAD_PARAMETERS;
 
 	TEE_MemMove(&handle, ctrl->memref.buffer, sizeof(uint32_t));
-	session = handle_put(&session_handle_db, handle);
+	session = get_pkcs_session(handle);
 	if (!session)
 		return TEE_ERROR_BAD_PARAMETERS;
 
-	if (session->tee_op_handle != TEE_HANDLE_NULL)
-		TEE_FreeOperation(session->tee_op_handle);
-	TEE_Free(session);
-
-	// TODO: destroy all non-persistent objects owned by the session
-
-	// TODO: unregister session handle from the token's session list
-
-	// TODO: if last session closed, token moves to Public state
+	close_ck_session(session);
 
 	return TEE_SUCCESS;
 }
 
+TEE_Result ck_token_close_all(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out)
+{
+	uint32_t token_id;
+	struct ck_token *token;
+	struct pkcs11_session *session;
+
+	if (!ctrl || in || out)
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	if (out->memref.size < sizeof(uint32_t))
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	if (ctrl->memref.size != sizeof(uint32_t))
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	TEE_MemMove(&token_id, ctrl->memref.buffer, sizeof(uint32_t));
+	token = get_token(token_id);
+	if (!token)
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	LIST_FOREACH(session, &token->session_list, link)
+		close_ck_session(session);
+
+	return TEE_SUCCESS;
+}
