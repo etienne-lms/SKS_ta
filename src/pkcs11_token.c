@@ -336,7 +336,7 @@ TEE_Result ck_slot_info(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out)
 	/* TODO: prevent crash on unaligned buffers */
 	info = (void *)out->memref.buffer;
 
-	TEE_MemFill(info, 0, sizeof(info));
+	TEE_MemFill(info, 0, sizeof(*info));
 
 	PADDED_STRING_COPY(info->slotDescription, desc);
 	PADDED_STRING_COPY(info->manufacturerID, manuf);
