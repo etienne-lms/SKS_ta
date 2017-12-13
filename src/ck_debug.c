@@ -458,7 +458,7 @@ static char *__flag2str(CK_ULONG flags, enum ck_debug_flag_type type)
 			continue;
 
 		/* 4 digit prefix "CKF_" is not dumped */
-		if (!memcmp(label, "CKF_", 4))
+		if (!TEE_MemCompare(label, "CKF_", 4))
 			label += 4;
 
 		/* Extra space digit */

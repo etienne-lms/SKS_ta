@@ -5,7 +5,6 @@
 
 #include <inttypes.h>
 #include <pkcs11.h>
-#include <string.h>	// FIXME: use TEE_MemCopy(), not memcpy()
 #include <string_ext.h>		// (for buf_compare_ct)
 #include <tee_internal_api.h>
 #include <tee_internal_api_extensions.h>
@@ -184,7 +183,7 @@ TEE_Result entry_create_object(int teesess, TEE_Param *ctrl,
 {
 	TEE_Result res;
 	CK_RV rv;
-	char *sess_ptr;
+	char *ctrl_ptr;
 	uint32_t ck_session;
 	struct pkcs11_session *session;
 	char *head;
@@ -196,8 +195,8 @@ TEE_Result entry_create_object(int teesess, TEE_Param *ctrl,
 	if (!ctrl || in || !out || out->memref.size < sizeof(uint32_t))
 		return TEE_ERROR_BAD_PARAMETERS;
 
-	sess_ptr = ctrl->memref.buffer;
-	ck_session = *(uint32_t *)(void *)sess_ptr;
+	ctrl_ptr = ctrl->memref.buffer;
+	ck_session = *(uint32_t *)(void *)ctrl_ptr;
 
 	session = get_pkcs_session(ck_session);
 	if (!session || session->tee_session != teesess)
@@ -211,8 +210,7 @@ TEE_Result entry_create_object(int teesess, TEE_Param *ctrl,
 	if (!temp)
 		return TEE_ERROR_OUT_OF_MEMORY;
 
-	head = sess_ptr + sizeof(uint32_t);
-	memcpy(temp, head, temp_size);
+	TEE_MemMove(temp, ctrl_ptr + sizeof(uint32_t), temp_size);
 	rv = serial_sanitize_attributes((void **)&head, temp, temp_size);
 	if (rv)
 		return ckr2tee(rv);
@@ -245,7 +243,7 @@ TEE_Result entry_create_object(int teesess, TEE_Param *ctrl,
 	}
 
 	/* Return object handle to the client */
-	memcpy(out->memref.buffer, &obj_handle, sizeof(uint32_t));
+	TEE_MemMove(out->memref.buffer, &obj_handle, sizeof(uint32_t));
 	out->memref.size = sizeof(uint32_t);
 
 	return res;

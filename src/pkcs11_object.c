@@ -5,7 +5,6 @@
 
 #include <inttypes.h>
 #include <pkcs11.h>
-#include <string.h>	// FIXME: use TEE_MemCopy(), not memcpy()
 #include <string_ext.h>		// (for buf_compare_ct)
 #include <tee_internal_api.h>
 #include <tee_internal_api_extensions.h>

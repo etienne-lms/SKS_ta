@@ -3,20 +3,20 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
-#include <string.h>
+#include <tee_internal_api.h>
 
 #include "helpers_ck.h"
 
 #define MEMCPY_FIELD(_dst, _src, _f) \
 	do { \
-		memcpy((_dst)->_f, (_src)->_f, sizeof((_dst)->_f)); \
+		TEE_MemMove((_dst)->_f, (_src)->_f, sizeof((_dst)->_f)); \
 		if (sizeof((_dst)->_f) != sizeof((_src)->_f)) \
 			return CKR_GENERAL_ERROR; \
 	} while (0)
 
 #define MEMCPY_VERSION(_dst, _src, _f) \
 	do { \
-		memcpy(&(_dst)->_f, (_src)->_f, sizeof(CK_VERSION)); \
+		TEE_MemMove(&(_dst)->_f, (_src)->_f, sizeof(CK_VERSION)); \
 		if (sizeof(CK_VERSION) != sizeof((_src)->_f)) \
 			return CKR_GENERAL_ERROR; \
 	} while (0)
@@ -59,9 +59,9 @@ CK_RV sks2ck_ulong_array(void *dst, void *src, size_t count)
 	CK_ULONG ckv;
 
 	while (count--) {
-		memcpy(&sksv, sks, sizeof(sksv));
+		TEE_MemMove(&sksv, sks, sizeof(sksv));
 		ckv = sksv;
-		memcpy(ck, &ckv, sizeof(ckv));
+		TEE_MemMove(ck, &ckv, sizeof(ckv));
 		sks += sizeof(sksv);
 		ck += sizeof(ckv);;
 	}
