@@ -188,6 +188,7 @@ void *set_pkcs11_imported_symkey_attributes(void *ref)
 	if (rv == CKR_OK)
 		rv = serialize_sks_ref(&obj, CKA_VALUE, attr, size);
 
+	rv = serial_finalize_object(&obj);
 bail:
 	if (rv)
 		release_serial_object(&obj);
