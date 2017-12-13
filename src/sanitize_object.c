@@ -11,7 +11,7 @@
 #include <trace.h>
 
 #include "ck_debug.h"
-#include "helpers_ck.h"
+#include "ck_helpers.h"
 #include "sanitize_object.h"
 #include "serializer.h"
 

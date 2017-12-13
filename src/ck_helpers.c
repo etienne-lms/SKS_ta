@@ -5,7 +5,7 @@
 
 #include <tee_internal_api.h>
 
-#include "helpers_ck.h"
+#include "ck_helpers.h"
 
 #define MEMCPY_FIELD(_dst, _src, _f) \
 	do { \

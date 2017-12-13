@@ -10,7 +10,7 @@
 #include <string_ext.h>
 #include <trace.h>
 
-#include "helpers_ck.h"
+#include "ck_helpers.h"
 #include "serializer.h"
 
 static size_t __sizeof_serial_head(uint32_t version, uint32_t config)
