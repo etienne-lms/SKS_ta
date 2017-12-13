@@ -411,8 +411,8 @@ CK_RV serial_sanitize_attributes(void **head, void *ref, size_t ref_size)
 	rv = sanitize_attributes_from_head(&dst_obj, ref);
 	if (rv == CKR_OK)
 		*head = dst_obj.buffer;
-
-	release_serial_object(&dst_obj);
+	else
+		release_serial_object(&dst_obj);
 
 	return rv;
 }
@@ -428,11 +428,14 @@ static CK_RV trace_attributes(char *prefix, void *src, void *end)
 	size_t prefix_len = strlen(prefix);
 	char *cur = src;
 
-	/* append 4 spaces to the prefix */
-	prefix2 = TEE_Malloc(prefix_len + 1 + 4, TEE_USER_MEM_HINT_NO_FILL_ZERO);
+	/* append 4 spaces to the prefix plus terminal '\0' */
+	prefix2 = TEE_Malloc(prefix_len + 1 + 4, TEE_MALLOC_FILL_ZERO);
+	if (!prefix2)
+		return CKR_DEVICE_MEMORY;
+
 	TEE_MemMove(prefix2, prefix, prefix_len + 1);
 	memset(prefix2 + prefix_len, ' ', 4);
-	*(prefix2 + prefix_len + 1 + 4) = '\0';
+	*(prefix2 + prefix_len + 4) = '\0';
 
 	for (; cur < (char *)end; cur += next) {
 		struct sks_ref sks_ref;
@@ -469,7 +472,7 @@ static CK_RV trace_attributes(char *prefix, void *src, void *end)
 	return CKR_OK;
 }
 
-CK_RV serial_trace_attributes_from_head(char *prefix, void *ref)
+CK_RV serial_trace_attributes_from_head(const char *prefix, void *ref)
 {
 	struct sks_obj_rawhead raw;
 	char *pre;
@@ -518,7 +521,7 @@ CK_RV serial_trace_attributes_from_head(char *prefix, void *ref)
 		goto bail;
 	}
 
-	pre[prefix ? strlen(prefix) + 1 : 0] = '|';
+	pre[prefix ? strlen(prefix) : 0] = '|';
 	rv = trace_attributes(pre, (char *)ref + offset, (char *)ref + offset + raw.blobs_size);
 	if (rv)
 		goto bail;

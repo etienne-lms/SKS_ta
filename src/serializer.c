@@ -323,6 +323,7 @@ CK_RV reset_serial_object_keyhead(struct serializer *obj)
 void release_serial_object(struct serializer *obj)
 {
 	TEE_Free(obj->buffer);
+	obj->buffer = NULL;
 }
 
 /**
@@ -334,16 +335,11 @@ void release_serial_object(struct serializer *obj)
 CK_RV serialize(char **bstart, size_t *blen, void *data, size_t len)
 {
 	char *buf;
-	size_t nlen;
-	CK_RV rv;
+	size_t nlen = *blen + len;
 
-	nlen = *blen + len;
-
-	buf = realloc(*bstart, nlen);
-	if (!buf) {
-		rv = CKR_HOST_MEMORY;
-		goto error;
-	}
+	buf = TEE_Realloc(*bstart, nlen);
+	if (!buf)
+		return CKR_DEVICE_MEMORY;
 
 	memcpy(buf + *blen, data, len);
 
@@ -351,10 +347,6 @@ CK_RV serialize(char **bstart, size_t *blen, void *data, size_t len)
 	*bstart = buf;
 
 	return CKR_OK;
-error:
-	TEE_Free(buf);
-
-	return rv;
 }
 
 CK_RV serialize_32b(struct serializer *obj, uint32_t data)

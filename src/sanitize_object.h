@@ -17,7 +17,7 @@ CK_RV serial_sanitize_mechanism(struct serializer *obj);
 
 /* Debug: dump attribute content as debug traces */
 CK_RV serial_trace_attributes(char *prefix, struct serializer *obj);
-CK_RV serial_trace_attributes_from_head(char *prefix, void *ref);
+CK_RV serial_trace_attributes_from_head(const char *prefix, void *ref);
 
 #endif /*__SERIAL_SANITIZE_H*/
 
