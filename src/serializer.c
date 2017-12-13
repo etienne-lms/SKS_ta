@@ -320,6 +320,55 @@ CK_RV reset_serial_object_keyhead(struct serializer *obj)
 	return serialize_buffer(obj, &head, sizeof(head));
 }
 
+CK_RV serial_finalize_object(struct serializer *obj)
+{
+	union {
+		struct sks_obj_rawhead raw;
+		struct sks_obj_genhead gen;
+		struct sks_obj_keyhead key;
+	} head;
+
+	switch (obj->version) {
+	case SKS_ABI_VERSION_CK_2_40:
+		switch (SKS_ABI_HEAD(obj->config)) {
+		case SKS_ABI_CONFIG_RAWHEAD:
+			head.raw.version = obj->version;
+			head.raw.configuration = obj->config;
+			head.raw.blobs_size = obj->size - sizeof(head.raw);
+			head.raw.blobs_count = obj->item_count;
+			TEE_MemMove(obj->buffer, &head.raw, sizeof(head.raw));
+			break;
+		case SKS_ABI_CONFIG_GENHEAD:
+			head.gen.version = obj->version;
+			head.gen.configuration = obj->config;
+			head.gen.blobs_size = obj->size - sizeof(head.gen);
+			head.gen.blobs_count = obj->item_count;
+			head.gen.class = obj->class;
+			head.gen.type = obj->type;
+			TEE_MemMove(obj->buffer, &head.gen, sizeof(head.gen));
+			break;
+		case SKS_ABI_CONFIG_KEYHEAD:
+			head.key.version = obj->version;
+			head.key.configuration = obj->config;
+			head.key.blobs_size = obj->size - sizeof(head.key);
+			head.key.blobs_count = obj->item_count;
+			head.key.class = obj->class;
+			head.key.type = obj->type;
+			head.key.boolpropl = obj->boolprop[0];
+			head.key.boolproph = obj->boolprop[1];
+			TEE_MemMove(obj->buffer, &head.key, sizeof(head.key));
+			break;
+		default:
+			return CKR_FUNCTION_FAILED;
+		}
+		break;
+	default:
+		return CKR_FUNCTION_FAILED;
+	}
+
+	return CKR_OK;
+}
+
 void release_serial_object(struct serializer *obj)
 {
 	TEE_Free(obj->buffer);
