@@ -82,7 +82,7 @@ TEE_Result TA_InvokeCommandEntryPoint(void *session, uint32_t cmd,
 	if (TEE_PARAM_TYPE_GET(ptypes, 3) != TEE_PARAM_TYPE_NONE)
 		goto bad_types;
 
-	MSG("SKS TA entry: %s ctrl %" PRIu32 "@%p,"
+	DMSG("SKS TA entry: %s ctrl %" PRIu32 "@%p,"
 		" in %" PRIu32 "@%p, out %" PRIu32 "@%p",
 		skscmd2str(cmd),
 		ctrl ? ctrl->memref.size : 0, ctrl ? ctrl->memref.buffer : 0,
