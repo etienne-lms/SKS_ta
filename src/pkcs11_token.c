@@ -195,6 +195,97 @@ static void *get_arg(void *dst, size_t size, void *src, size_t *src_size)
 	return ptr + size;
 }
 
+/* ctrl=[slot-id][pin-size][pin], in=unused, out=unused */
+TEE_Result ck_token_initialize(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out)
+{
+	char *ctrl_arg;
+	size_t ctrl_size;
+	uint32_t token_id;
+	struct ck_token *token;
+	uint32_t pin_size;
+	void *pin;
+	char label[32 + 1];
+
+	if (!ctrl || in || out)
+		return ckr2tee(CKR_ARGUMENTS_BAD);
+
+	ctrl_arg = ctrl->memref.buffer;
+	ctrl_size = ctrl->memref.size;
+
+	ctrl_arg = get_arg(&token_id, sizeof(uint32_t), ctrl_arg, &ctrl_size);
+	if (!ctrl_arg)
+		return ckr2tee(CKR_ARGUMENTS_BAD);
+
+	ctrl_arg = get_arg(&pin_size, sizeof(uint32_t), ctrl_arg, &ctrl_size);
+	if (!ctrl_arg)
+		return ckr2tee(CKR_ARGUMENTS_BAD);
+
+	pin = ctrl_arg;
+	ctrl_arg = get_arg(NULL, pin_size, ctrl_arg, &ctrl_size);
+	if (!ctrl_arg)
+		return ckr2tee(CKR_ARGUMENTS_BAD);
+
+	ctrl_arg = get_arg(label, 32 * sizeof(char), ctrl_arg, &ctrl_size);
+	if (!ctrl_arg)
+		return ckr2tee(CKR_ARGUMENTS_BAD);
+
+	token = get_token(token_id);
+	if (!token)
+		return ckr2tee(CKR_SLOT_ID_INVALID);
+
+	if (token->flags & CKF_SO_PIN_LOCKED) {
+		IMSG("Token SO PIN is locked");
+		return ckr2tee(CKR_PIN_LOCKED);
+	}
+
+	if (!LIST_EMPTY(&token->session_list)) {
+		IMSG("SO cannot log in, pending session(s)");
+		return ckr2tee(CKR_SESSION_EXISTS);
+	}
+
+	if (!token->so_pin) {
+		uint8_t *so_pin = TEE_Malloc(pin_size, 0);
+
+		if (!so_pin)
+			return ckr2tee(CKR_DEVICE_MEMORY);
+
+		TEE_MemMove(so_pin, pin, pin_size);
+		token->so_pin_size = pin_size;
+		token->so_pin = so_pin;
+
+	} else {
+		int pin_rc;
+
+		/*  TODO: compare more if client pin is bigger than expected */
+		pin_size = MIN(token->so_pin_size, pin_size);
+		pin_rc = buf_compare_ct(token->so_pin, pin, pin_size);
+
+		if (pin_rc || pin_size != token->so_pin_size) {
+			token->flags |= CKF_SO_PIN_COUNT_LOW;
+			token->so_pin_count++;
+
+			if (token->so_pin_count == 6)
+				token->flags |= CKF_SO_PIN_FINAL_TRY;
+			if (token->so_pin_count == 7)
+				token->flags |= CKF_SO_PIN_LOCKED;
+
+			return ckr2tee(CKR_PIN_INCORRECT);
+		} else {
+			token->flags &= (CKF_SO_PIN_COUNT_LOW |
+					 CKF_SO_PIN_FINAL_TRY);
+			token->so_pin_count = 0;
+		}
+	}
+
+	TEE_MemMove(token->label, label, 32 * sizeof(char));
+	token->flags |= CKF_TOKEN_INITIALIZED;
+
+	label[32] = '\0';
+	IMSG("Token \"%s\" is happy to be initilialized", label);
+
+	return ckr2tee(CKR_OK);
+}
+
 TEE_Result ck_slot_list(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out)
 {
 	const size_t out_size = sizeof(uint32_t) * TOKEN_COUNT;

@@ -81,6 +81,8 @@ TEE_Result TA_InvokeCommandEntryPoint(void __unused *session, uint32_t cmd,
 		return ck_slot_info(ctrl, in, out);
 	case SKS_CMD_CK_TOKEN_INFO:
 		return ck_token_info(ctrl, in, out);
+	case SKS_CMD_CK_INIT_TOKEN:
+		return ck_token_initialize(ctrl, in, out);
 
 	case SKS_CMD_CK_MECHANISM_IDS:
 		return ck_token_mecha_ids(ctrl, in, out);
