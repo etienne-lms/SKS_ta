@@ -15,7 +15,7 @@
 
 TEE_Result TA_CreateEntryPoint(void)
 {
-	if (pkcs11_token_init())
+	if (pkcs11_init())
 		return TEE_ERROR_SECURITY;
 
 	return TEE_SUCCESS;
@@ -75,9 +75,10 @@ TEE_Result TA_InvokeCommandEntryPoint(void __unused *session, uint32_t cmd,
 	switch (cmd) {
 	case SKS_CMD_CK_PING:
 		return TEE_SUCCESS;
-	case SKS_CMD_CK_SLOTS_INFO:
-		/* TA is a slot provider? inside a slot? */
-		return TEE_ERROR_NOT_SUPPORTED;
+	case SKS_CMD_CK_SLOT_LIST:
+		return ck_slot_list(ctrl, in, out);
+	case SKS_CMD_CK_SLOT_INFO:
+		return ck_slot_info(ctrl, in, out);
 	case SKS_CMD_CK_TOKEN_INFO:
 		return ck_token_info(ctrl, in, out);
 

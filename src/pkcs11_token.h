@@ -7,15 +7,22 @@
 #define __SKS_TA_PKCS11_TOKEN_H
 
 #include <pkcs11.h>
+#include <sys/queue.h>
 #include <tee_internal_api.h>
+#include "handle.h"
 
 /* Hard coded description */
 #define SKS_CRYPTOKI_TOKEN_LABEL		"op-tee pkcs#11 token (dev...)"
 #define SKS_CRYPTOKI_TOKEN_MANUFACTURER		"Linaro"
-#define SKS_CRYPTOKI_TOKEN_MODEL		"SKS TA"
-#define SKS_CRYPTOKI_TOKEN_SERAIL_NUMBER	"00000000000"
+#define SKS_CRYPTOKI_TOKEN_MODEL		"OP-TEE SKS TA"
+#define SKS_CRYPTOKI_TOKEN_SERIAL_NUMBER	"0000000000000000"
 #define SKS_CRYPTOKI_TOKEN_HW_VERSION		{ 0, 0 }
 #define SKS_CRYPTOKI_TOKEN_FW_VERSION		{ 0, 0 }
+
+#define SKS_CRYPTOKI_SLOT_DESCRIPTION		"OP-TEE SKS TA"
+#define SKS_CRYPTOKI_SLOT_MANUFACTURER		SKS_CRYPTOKI_TOKEN_MANUFACTURER
+#define SKS_CRYPTOKI_SLOT_HW_VERSION		SKS_CRYPTOKI_TOKEN_HW_VERSION
+#define SKS_CRYPTOKI_SLOT_FW_VERSION		SKS_CRYPTOKI_TOKEN_FW_VERSION
 
 #define PADDED_STRING_COPY(_dst, _src) \
 	do { \
@@ -33,6 +40,16 @@ enum pkcs11_token_login_state {
 	PKCS11_TOKEN_STATE_CONTEXT_SPECIFIC,
 };
 
+enum pkcs11_token_session_state {
+	PKCS11_TOKEN_STATE_READ_WRITE = 0,
+	PKCS11_TOKEN_STATE_READ_ONLY,
+};
+
+struct pkcs11_token;
+struct pkcs11_session;
+
+LIST_HEAD(session_list, pkcs11_session);
+
 /*
  * State of the PKCS#11 token
  *
@@ -44,20 +61,27 @@ enum pkcs11_token_login_state {
  * @max_pin_len;
  * @state - see PKCS11_TOKEN_STATE_XXX
  */
-struct ck_token_state {
+struct ck_token {
 	uint8_t label[32];			/* set by the client */
 	uint8_t serial_number[16];		/* shall be provisioned somewhere */
 
 	uint32_t session_counter;
 	uint32_t rw_session_counter;
 
-	uint32_t min_pin_len;
-	uint32_t max_pin_len;
+	uint32_t flags;
+
+	void *so_pin;
+	size_t so_pin_size;
+	size_t so_pin_count;
+	void *user_pin;
+	size_t user_pin_size;
 
 	CK_USER_TYPE user_type;			/* SecurityOfficer, User or Public */
-	enum pkcs11_token_login_state state;	/* State of who logged and how */
+	enum pkcs11_token_login_state login_state;
+	enum pkcs11_token_session_state	session_state;
 
-	// TODO list of the sessions
+	struct session_list session_list;
+	struct handle_db session_handle_db;
 };
 
 /*
@@ -84,24 +108,38 @@ enum pkcs11_session_processing {
 /*
  * Structure tracing the PKCS#11 sessions
  *
+ * @link - session litsing
+ * @token - token/slot this session belongs to
  * @tee_session - TEE session use to create the PLCS session
  * @handle - identifier of the session
  * @read_only - true if the session is read-only, false if read/write
  * @state - R/W SO, R/W user, RO user, R/W public, RO public. See PKCS11.
  */
 struct pkcs11_session {
+	LIST_ENTRY(pkcs11_session) link;
+	struct ck_token *token;
 	void *tee_session;
 	int handle;
+	bool readwrite;
 	CK_STATE state;
 	enum pkcs11_session_processing processing;
 	TEE_OperationHandle tee_op_handle;	// HANDLE_NULL or on-going operation
 };
 
-int pkcs11_token_init(void);
+int pkcs11_init(void);
 
+CK_RV ck_slot_list(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out);
+CK_RV ck_slot_info(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out);
 TEE_Result ck_token_info(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out);
+
 TEE_Result ck_token_mecha_ids(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out);
 TEE_Result ck_token_mecha_info(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out);
+
+CK_RV ck_token_initialize(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out);
+TEE_Result ck_token_init_pin(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out);
+TEE_Result ck_token_set_pin(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out);
+TEE_Result ck_token_login(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out);
+TEE_Result ck_token_logout(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out);
 
 TEE_Result ck_token_ro_session(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out);
 TEE_Result ck_token_rw_session(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out);

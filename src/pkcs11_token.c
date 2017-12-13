@@ -6,15 +6,98 @@
 #include <sks_abi.h>
 #include <sks_ta.h>
 #include <string.h>
+#include <string_ext.h>
+#include <sys/queue.h>
 #include <tee_internal_api_extensions.h>
 #include <util.h>
 
+#include "ck_debug.h"
 #include "handle.h"
 #include "pkcs11_token.h"
 
-struct ck_token_state ck_token_state;
+/* Provide 3 tokens, as a start (9 max :( */
+#define TOKEN_COUNT	3
+struct ck_token ck_token[TOKEN_COUNT];
 
 static struct handle_db session_handle_db = HANDLE_DB_INITIALIZER;
+
+static struct ck_token *get_token(unsigned int token_id)
+{
+	if (token_id > TOKEN_COUNT)
+		return NULL;
+
+	return &ck_token[token_id];
+}
+
+/*
+ * Initialization routine for the trsuted application.
+ */
+static int __pkcs11_token_init(unsigned int id)
+{
+	char sn[] = SKS_CRYPTOKI_TOKEN_SERIAL_NUMBER;
+	struct ck_token *token = get_token(id);
+
+	if (!token)
+		return 1;
+
+	if (token->login_state != PKCS11_TOKEN_STATE_INVALID)
+		return 0;
+
+	// TODO: get persistent storage of SKS if available.
+
+	/* Let's use a hard coded SN, one per token up to 9 */
+	sn[strlen(sn) - 1] += id;
+	PADDED_STRING_COPY(token->serial_number, sn);
+
+	LIST_INIT(&token->session_list);
+	TEE_MemFill(&token->session_handle_db, 0,
+			sizeof(token->session_handle_db));
+
+	token->flags |= CKF_SO_PIN_TO_BE_CHANGED;
+
+	token->flags |= CKF_RNG;
+
+	//TODO: CKF_WRITE_PROTECTED
+	//TODO; CKF_LOGIN_REQUIRED
+	//TODO; CKF_USER_PIN_INITIALIZED
+
+	/* Archi choice; one can restore a state from an exported blob? */
+	//info->flags |= CKF_RESTORE_KEY_NOT_NEEDED
+
+	token->flags |= CKF_CLOCK_ON_TOKEN;
+	/* TODO CKF_PROTECTED_AUTHENTICATION_PATH */
+	token->flags |= CKF_DUAL_CRYPTO_OPERATIONS;
+
+	// TODO; track token init.
+	//	CKF_TOKEN_INITIALIZED
+	// TODO: CKF_SECONDARY_AUTHENTICATION
+	// TODO; track logins
+	//	CKF_USER_PIN_COUNT_LOW
+	// TODO; track user PIN:
+	//	CKF_USER_PIN_FINAL_TRY
+	//	CKF_USER_PIN_LOCKED
+	//	CKF_USER_PIN_TO_BE_CHANGED
+	// TODO; track secu officer PIN:
+	//	CKF_SO_PIN_COUNT_LOW
+	//	CKF_SO_PIN_FINAL_TRY
+	//	CKF_SO_PIN_LOCKED
+	//	CKF_SO_PIN_TO_BE_CHANGED
+
+	token->login_state = PKCS11_TOKEN_STATE_PUBLIC_SESSIONS;
+
+	return 0;
+}
+
+int pkcs11_init(void)
+{
+	unsigned int id;
+
+	for (id = 0; id < TOKEN_COUNT; id++)
+		if (__pkcs11_token_init(id))
+			return 1;
+
+	return 0;
+}
 
 struct pkcs11_session *get_pkcs_session(uint32_t ck_handle)
 {
@@ -96,80 +179,124 @@ int check_pkcs_session_processing_state(uint32_t ck_session,
 	return (pkcs_session->processing == state) ? 0 : 1;
 }
 
-/*
- * Initialization routine the the trsuted application.
- */
-static int __pkcs11_token_init(void)
+static void *get_arg(void *dst, size_t size, void *src, size_t *src_size)
 {
-	char sn[] = SKS_CRYPTOKI_TOKEN_SERAIL_NUMBER;
+	char *ptr = src;
 
-	/* Let's use a hard coded SN */
-	PADDED_STRING_COPY(ck_token_state.serial_number, sn);
+	if (src_size && (*src_size < size))
+		return NULL;
 
-	ck_token_state.state = PKCS11_TOKEN_STATE_PUBLIC_SESSIONS;
-	return 0;
-}
-int pkcs11_token_init(void)
-{
-	if (ck_token_state.state != PKCS11_TOKEN_STATE_INVALID)
-		return __pkcs11_token_init();
+	if (dst)
+		TEE_MemMove(dst, ptr, size);
 
-	return 0;
+	if (src_size)
+		*src_size -= size;
+
+	return ptr + size;
 }
 
-TEE_Result ck_token_info(TEE_Param __unused *ctrl,
-			 TEE_Param __unused *in, TEE_Param *out)
+TEE_Result ck_slot_list(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out)
 {
-	struct sks_ck_token_info info;
-	const char label[] = SKS_CRYPTOKI_TOKEN_LABEL;
+	const size_t out_size = sizeof(uint32_t) * TOKEN_COUNT;
+	uint32_t *id;
+	unsigned int n;
+
+	if (ctrl || in || !out)
+		return ckr2tee(CKR_ARGUMENTS_BAD);
+
+	if (out->memref.size < out_size) {
+		out->memref.size = out_size;
+		return ckr2tee(CKR_BUFFER_TOO_SMALL);
+	}
+
+	for (id = out->memref.buffer, n = 0; n < TOKEN_COUNT; n++, id++)
+		*id = (uint32_t)n;
+
+	return ckr2tee(CKR_OK);
+}
+
+TEE_Result ck_slot_info(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out)
+{
+	const char desc[] = SKS_CRYPTOKI_SLOT_DESCRIPTION;
+	const char manuf[] = SKS_CRYPTOKI_SLOT_MANUFACTURER;
+	const CK_VERSION hwver = SKS_CRYPTOKI_SLOT_HW_VERSION;
+	const CK_VERSION fwver = SKS_CRYPTOKI_SLOT_FW_VERSION;
+	struct sks_ck_slot_info *info;
+	uint32_t token_id;
+	struct ck_token *token;
+
+	if (!ctrl || in || !out)
+		return ckr2tee(CKR_ARGUMENTS_BAD);
+
+	if (ctrl->memref.size != sizeof(token_id))
+		return ckr2tee(CKR_ARGUMENTS_BAD);
+
+	TEE_MemMove(&token_id, ctrl->memref.buffer, sizeof(token_id));
+
+	if (out->memref.size < sizeof(struct sks_ck_slot_info)) {
+		out->memref.size = sizeof(struct sks_ck_slot_info);
+		return ckr2tee(CKR_BUFFER_TOO_SMALL);
+	}
+
+	token = get_token(token_id);
+	if (!token)
+		return ckr2tee(CKR_ARGUMENTS_BAD);
+
+	/* TODO: prevent crash on unaligned buffers */
+	info = (void *)out->memref.buffer;
+
+	TEE_MemFill(info, 0, sizeof(info));
+
+	PADDED_STRING_COPY(info->slotDescription, desc);
+	PADDED_STRING_COPY(info->manufacturerID, manuf);
+
+	info->flags |= CKF_TOKEN_PRESENT;
+	info->flags |= CKF_REMOVABLE_DEVICE;	/* TODO: removeable? */
+	info->flags &= ~CKF_HW_SLOT;		/* are we a HW slot? */
+
+	TEE_MemMove(&info->hardwareVersion, &hwver, sizeof(hwver));
+	TEE_MemMove(&info->firmwareVersion, &fwver, sizeof(fwver));
+
+	out->memref.size = sizeof(struct sks_ck_slot_info);
+
+	return ckr2tee(CKR_OK);
+}
+
+TEE_Result ck_token_info(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out)
+{
 	const char manuf[] = SKS_CRYPTOKI_TOKEN_MANUFACTURER;
 	const char model[] = SKS_CRYPTOKI_TOKEN_MODEL;
 	const CK_VERSION hwver = SKS_CRYPTOKI_TOKEN_HW_VERSION;
 	const CK_VERSION fwver = SKS_CRYPTOKI_TOKEN_FW_VERSION;
+	struct sks_ck_token_info info;
+	uint32_t token_id;
+	struct ck_token *token;
 
-	if (ctrl || in || !out)
+	if (!ctrl || in || !out)
 		return TEE_ERROR_BAD_PARAMETERS;
+
+	if (ctrl->memref.size != sizeof(token_id))
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	TEE_MemMove(&token_id, ctrl->memref.buffer, sizeof(token_id));
 
 	if (out->memref.size < sizeof(struct sks_ck_token_info)) {
 		out->memref.size = sizeof(struct sks_ck_token_info);
 		return TEE_ERROR_SHORT_BUFFER;
 	}
 
+	token = get_token(token_id);
+	if (!token)
+		return TEE_ERROR_BAD_PARAMETERS;
+
 	TEE_MemFill(&info, 0, sizeof(info));
 
-	PADDED_STRING_COPY(info.label, label);
+	PADDED_STRING_COPY(info.label, token->label);
 	PADDED_STRING_COPY(info.manufacturerID, manuf);
 	PADDED_STRING_COPY(info.model, model);
-	PADDED_STRING_COPY(info.serialNumber, ck_token_state.serial_number);
+	PADDED_STRING_COPY(info.serialNumber, token->serial_number);
 
-	info.flags |= CKF_RNG;
-
-	//TODO: info->flags |= wirte_protect() ? CKF_WRITE_PROTECTED : 0;
-	//TODO; info->flags |= login_stored() ? CKF_LOGIN_REQUIRED : 0;
-	//TODO; info->flags |= pin_inited() ? CKF_USER_PIN_INITIALIZED : 0;
-
-	/* Archi choice; one can restore a state from an exported blob? */
-	//info->flags |= CKF_RESTORE_KEY_NOT_NEEDED
-
-	info.flags |= CKF_CLOCK_ON_TOKEN;
-	/* TODO CKF_PROTECTED_AUTHENTICATION_PATH */
-	info.flags |= CKF_DUAL_CRYPTO_OPERATIONS;
-
-	// TODO; track token init.
-	//	CKF_TOKEN_INITIALIZED
-	// TODO: CKF_SECONDARY_AUTHENTICATION
-	// TODO; track logins
-	//	CKF_USER_PIN_COUNT_LOW
-	// TODO; track user PIN:
-	//	CKF_USER_PIN_FINAL_TRY
-	//	CKF_USER_PIN_LOCKED
-	//	CKF_USER_PIN_TO_BE_CHANGED
-	// TODO; track secu officer PIN:
-	//	CKF_SO_PIN_COUNT_LOW
-	//	CKF_SO_PIN_FINAL_TRY
-	//	CKF_SO_PIN_LOCKED
-	//	CKF_SO_PIN_TO_BE_CHANGED
-	{}
+	info.flags = token->flags;
 
 	info.ulMaxSessionCount = CK_EFFECTIVELY_INFINITE;
 	info.ulSessionCount = CK_UNAVAILABLE_INFORMATION;
@@ -184,20 +311,20 @@ TEE_Result ck_token_info(TEE_Param __unused *ctrl,
 	info.ulTotalPrivateMemory = CK_UNAVAILABLE_INFORMATION;
 	info.ulFreePrivateMemory = CK_UNAVAILABLE_INFORMATION;
 
-	memcpy(&info.hardwareVersion, &hwver, sizeof(hwver));
-	memcpy(&info.firmwareVersion, &fwver, sizeof(fwver));
+	TEE_MemMove(&info.hardwareVersion, &hwver, sizeof(CK_VERSION));
+	TEE_MemMove(&info.firmwareVersion, &fwver, sizeof(CK_VERSION));
 
 	// TODO: get time and convert from refence into YYYYMMDDhhmmss/UTC
 	TEE_MemFill(info.utcTime, 0, sizeof(info.utcTime));
 
 	/* Return to caller with data */
-	memcpy(out->memref.buffer, &info, sizeof(info));
+	TEE_MemMove(out->memref.buffer, &info, sizeof(info));
+
 	return TEE_SUCCESS;
 }
 
 /* TODO: this is a temporary implementation */
-TEE_Result ck_token_mecha_ids(TEE_Param __unused *ctrl,
-			      TEE_Param __unused *in, TEE_Param *out)
+TEE_Result ck_token_mecha_ids(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out)
 {
 	// TODO: get the list of supported mechanism
 	const CK_MECHANISM_TYPE mecha_list[] = {
@@ -205,8 +332,10 @@ TEE_Result ck_token_mecha_ids(TEE_Param __unused *ctrl,
 		CKM_AES_ECB, CKM_AES_CBC, CKM_AES_MAC, CKM_AES_CBC_PAD,
 		CKM_AES_CTR, CKM_AES_GCM, CKM_AES_CCM, CKM_AES_CTS,
 	};
+	uint32_t token_id;
+	struct ck_token *token;
 
-	if (ctrl || in || !out)
+	if (!ctrl || in || !out)
 		return TEE_ERROR_BAD_PARAMETERS;
 
 	if (out->memref.size < sizeof(mecha_list)) {
@@ -214,18 +343,30 @@ TEE_Result ck_token_mecha_ids(TEE_Param __unused *ctrl,
 		return TEE_ERROR_SHORT_BUFFER;
 	}
 
+	if (ctrl->memref.size != sizeof(token_id))
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	TEE_MemMove(&token_id, ctrl->memref.buffer, sizeof(token_id));
+
+	token = get_token(token_id);
+	if (!token)
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	/* TODO: can a token support a restricted mechanism list */
 	out->memref.size = sizeof(mecha_list);
-	memcpy(out->memref.buffer, mecha_list, sizeof(mecha_list));
+	TEE_MemMove(out->memref.buffer, mecha_list, sizeof(mecha_list));
 
 	return TEE_SUCCESS;
 }
 
 /* TODO: this is a temporary implementation */
-TEE_Result ck_token_mecha_info(TEE_Param *ctrl,
-			       TEE_Param __unused *in, TEE_Param *out)
+TEE_Result ck_token_mecha_info(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out)
 {
 	CK_MECHANISM_INFO info;
 	CK_MECHANISM_TYPE type;
+	uint32_t token_id;
+	struct ck_token *token;
+	char *ctrl_ptr;
 
 	if (!ctrl || in || !out)
 		return TEE_ERROR_BAD_PARAMETERS;
@@ -235,8 +376,19 @@ TEE_Result ck_token_mecha_info(TEE_Param *ctrl,
 		return TEE_ERROR_SHORT_BUFFER;
 	}
 
+	if (ctrl->memref.size != 2 * sizeof(uint32_t))
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	ctrl_ptr = ctrl->memref.buffer;
+	TEE_MemMove(&token_id, ctrl_ptr, sizeof(uint32_t));
+	ctrl_ptr += sizeof(uint32_t);
+	TEE_MemMove(&type, ctrl_ptr, sizeof(uint32_t));
+
+	token = get_token(token_id);
+	if (!token)
+		return TEE_ERROR_BAD_PARAMETERS;
+
 	TEE_MemFill(&info, 0, sizeof(info));
-	memcpy(&type, ctrl->memref.buffer, sizeof(type));
 
 	/* TODO: full list of supported algorithm/mechanism */
 	switch (type) {
@@ -268,30 +420,42 @@ TEE_Result ck_token_mecha_info(TEE_Param *ctrl,
 	}
 
 	out->memref.size = sizeof(info);
-	memcpy(out->memref.buffer, &info, sizeof(info));
+	TEE_MemMove(out->memref.buffer, &info, sizeof(info));
 
 	return TEE_SUCCESS;
 }
 
 /* ctrl=unused, in=unused, out=[session-handle] */
-TEE_Result ck_token_ro_session(TEE_Param __unused *ctrl,
-				TEE_Param __unused *in,
-				TEE_Param __unused *out)
+TEE_Result ck_token_ro_session(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out)
 {
 	struct pkcs11_session *session;
+	uint32_t token_id;
+	struct ck_token *token;
 
-	if (ctrl || in || !out || out->memref.size < sizeof(uint32_t))
+	if (!ctrl || in || !out)
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	if (out->memref.size < sizeof(uint32_t))
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	if (ctrl->memref.size != sizeof(uint32_t))
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	TEE_MemMove(&token_id, ctrl->memref.buffer, sizeof(uint32_t));
+	token = get_token(token_id);
+	if (!token)
 		return TEE_ERROR_BAD_PARAMETERS;
 
 	session = TEE_Malloc(sizeof(*session), 0);
 	if (!session)
 		return TEE_ERROR_OUT_OF_MEMORY;
 
+	/* TODO: get and store the related OP-TEE session handle */
 	session->handle = handle_get(&session_handle_db, session);
 	session->processing = PKCS11_SESSION_READY;
 	session->tee_op_handle = TEE_HANDLE_NULL;
 
-	// TODO: register session handle into the token's session list
+	LIST_INSERT_HEAD(&token->session_list, session, link);
 
 	*(uint32_t *)out->memref.buffer = session->handle;
 	out->memref.size = sizeof(uint32_t);
@@ -300,13 +464,24 @@ TEE_Result ck_token_ro_session(TEE_Param __unused *ctrl,
 }
 
 /* ctrl=unused, in=unused, out=[session-handle] */
-TEE_Result ck_token_rw_session(TEE_Param __unused *ctrl,
-				TEE_Param __unused *in,
-				TEE_Param __unused *out)
+TEE_Result ck_token_rw_session(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out)
 {
 	struct pkcs11_session *session;
+	uint32_t token_id;
+	struct ck_token *token;
 
-	if (ctrl || in || !out || out->memref.size < sizeof(uint32_t))
+	if (!ctrl || in || !out)
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	if (out->memref.size < sizeof(uint32_t))
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	if (ctrl->memref.size != sizeof(uint32_t))
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	TEE_MemMove(&token_id, ctrl->memref.buffer, sizeof(uint32_t));
+	token = get_token(token_id);
+	if (!token)
 		return TEE_ERROR_BAD_PARAMETERS;
 
 	// TODO: if token is read-only, refuse RW sessions
@@ -316,11 +491,12 @@ TEE_Result ck_token_rw_session(TEE_Param __unused *ctrl,
 	if (!session)
 		return TEE_ERROR_OUT_OF_MEMORY;
 
+	/* TODO: get and store the related OP-TEE session handle */
 	session->handle = handle_get(&session_handle_db, session);
 	session->processing = PKCS11_SESSION_READY;
 	session->tee_op_handle = TEE_HANDLE_NULL;
 
-	// TODO: register session handle into the token's session list
+	LIST_INSERT_HEAD(&token->session_list, session, link);
 
 	*(uint32_t *)out->memref.buffer = session->handle;
 	out->memref.size = sizeof(uint32_t);
@@ -329,9 +505,7 @@ TEE_Result ck_token_rw_session(TEE_Param __unused *ctrl,
 }
 
 /* ctrl=[session-handle], in=unused, out=unused */
-TEE_Result ck_token_close_session(TEE_Param __unused *ctrl,
-				  TEE_Param __unused *in,
-				  TEE_Param __unused *out)
+TEE_Result ck_token_close_session(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out)
 {
 	struct pkcs11_session *session;
 	uint32_t handle;
@@ -339,7 +513,7 @@ TEE_Result ck_token_close_session(TEE_Param __unused *ctrl,
 	if (!ctrl || in || out || ctrl->memref.size < sizeof(uint32_t))
 		return TEE_ERROR_BAD_PARAMETERS;
 
-	memcpy(&handle, ctrl->memref.buffer, sizeof(uint32_t));
+	TEE_MemMove(&handle, ctrl->memref.buffer, sizeof(uint32_t));
 	session = handle_put(&session_handle_db, handle);
 	if (!session)
 		return TEE_ERROR_BAD_PARAMETERS;
