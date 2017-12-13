@@ -109,7 +109,7 @@ static TEE_Result create_aes_key(struct pkcs11_session *session,
 						 TEE_DATA_FLAG_ACCESS_READ |
 						 TEE_DATA_FLAG_ACCESS_WRITE |
 						 TEE_DATA_FLAG_ACCESS_WRITE_META |
-						 TEE_DATA_FLAG_OVERWRITE,
+						 TEE_DATA_FLAG_OVERWRITE, /* TODO: don't overwrite! */
 						 handle,
 						 key_data, key_size,
 						 &obj->key_handle);
@@ -122,12 +122,10 @@ static TEE_Result create_aes_key(struct pkcs11_session *session,
 
 		//TODO: add the object to the secure storage SKS database
 
-	} else {
-		/* Volatile objects are tied to the session that creates them */
-		obj->session_owner = session;
 	}
 
-	/* TODO: save the struct sks_key_object into the SKS database */
+	obj->session_owner = session;
+	LIST_INSERT_HEAD(&session->object_list, obj, link);
 
 	res = TEE_SUCCESS;
 
@@ -181,10 +179,8 @@ static TEE_Result create_data_blob(struct pkcs11_session __unused *session,
 /*
  * Create an object from a clear content provided by client
  */
-TEE_Result entry_create_object(int teesess,
-				TEE_Param __unused *ctrl,
-				TEE_Param __unused *in,
-				TEE_Param __unused *out)
+TEE_Result entry_create_object(int teesess, TEE_Param *ctrl,
+				TEE_Param *in, TEE_Param *out)
 {
 	TEE_Result res;
 	CK_RV rv;
@@ -260,5 +256,4 @@ TEE_Result entry_destroy_object(int __unused teesess,
 				TEE_Param __unused *in,
 				TEE_Param __unused *out)
 {
-	return TEE_ERROR_NOT_IMPLEMENTED;
 }

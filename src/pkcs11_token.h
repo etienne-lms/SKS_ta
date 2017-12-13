@@ -9,7 +9,9 @@
 #include <pkcs11.h>
 #include <sys/queue.h>
 #include <tee_internal_api.h>
+
 #include "handle.h"
+#include "object.h"
 
 /* Hard coded description */
 #define SKS_CRYPTOKI_TOKEN_LABEL		"op-tee pkcs#11 token (dev...)"
@@ -124,6 +126,7 @@ struct pkcs11_session {
 	CK_STATE state;
 	enum pkcs11_session_processing processing;
 	TEE_OperationHandle tee_op_handle;	// HANDLE_NULL or on-going operation
+	struct object_list object_list;
 };
 
 int pkcs11_init(void);

@@ -552,6 +552,7 @@ static TEE_Result ck_token_session(int teesess, TEE_Param *ctrl,
 	session->tee_session = teesess;
 	session->processing = PKCS11_SESSION_READY;
 	session->tee_op_handle = TEE_HANDLE_NULL;
+	LIST_INIT(&session->object_list);
 
 	LIST_INSERT_HEAD(&token->session_list, session, link);
 
@@ -579,18 +580,21 @@ static void close_ck_session(struct pkcs11_session *session)
 {
 	(void)handle_put(&session_handle_db, session->handle);
 
-	LIST_REMOVE(session, link);
-
 	if (session->tee_op_handle != TEE_HANDLE_NULL)
 		TEE_FreeOperation(session->tee_op_handle);
 
+	while (!LIST_EMPTY(&session->object_list)) {
+		// TODO: destroy all object belonging to the session
+		//destroy_object(session, LIST_FIRST(&session->object_list), true);
+	}
+
+	LIST_REMOVE(session, link);
+
+	if (LIST_EMPTY(&session->token->session_list)) {
+		// TODO: if last session closed, token moves to Public state
+	}
+
 	TEE_Free(session);
-
-	// TODO: destroy all non-persistent objects owned by the session
-
-	// TODO: unregister session handle from the token's session list
-
-	// TODO: if last session closed, token moves to Public state
 }
 
 /* ctrl=[session-handle], in=unused, out=unused */

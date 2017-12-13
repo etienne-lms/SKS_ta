@@ -6,9 +6,13 @@
 #ifndef __SKS_OBJECT_H
 #define __SKS_OBJECT_H
 
+#include <sys/queue.h>
 #include <tee_internal_api.h>
 
+struct pkcs11_session;
+
 struct sks_key_object {
+	LIST_ENTRY(sks_key_object) link;
 	void *session_owner;
 	uint32_t ck_handle;
 	/* poitner tho the serialized key attributes */
@@ -24,6 +28,8 @@ struct sks_key_object {
 	// These should not continue processing if the session owning
 	// key creation is closed (applicabble to volatile/non-token ojbects)
 };
+
+LIST_HEAD(object_list, sks_key_object);
 
 struct sks_key_object *object_get_tee_handle(uint32_t ck_handle);
 
