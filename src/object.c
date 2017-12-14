@@ -232,7 +232,7 @@ static CK_RV create_object(void *session, void *head, uint32_t *hdl)
 			goto bail;
 		}
 
-		res = TEE_AllocateTransientObject(tee_obj_type, obj_size,
+		res = TEE_AllocateTransientObject(tee_obj_type, obj_size * 8,
 						  &obj->key_handle);
 		if (res) {
 			DMSG("TEE_AllocateTransientObject failed, %" PRIx32,
