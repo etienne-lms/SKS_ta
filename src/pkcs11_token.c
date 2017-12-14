@@ -554,6 +554,7 @@ static CK_RV ck_token_session(int teesess, TEE_Param *ctrl,
 	session->processing = PKCS11_SESSION_READY;
 	session->tee_op_handle = TEE_HANDLE_NULL;
 	LIST_INIT(&session->object_list);
+	session->token = token;
 
 	LIST_INSERT_HEAD(&token->session_list, session, link);
 
