@@ -190,3 +190,51 @@ int sks_attr2boolprop_shift(CK_ULONG attr)
 
 	return -1;
 }
+
+TEE_Result ckr2tee_error(CK_RV rv)
+{
+	switch (rv) {
+	case CKR_OK:
+		return TEE_SUCCESS;
+	case CKR_ARGUMENTS_BAD:
+		return TEE_ERROR_BAD_PARAMETERS;
+	case CKR_DEVICE_MEMORY:
+		return TEE_ERROR_OUT_OF_MEMORY;
+	case CKR_BUFFER_TOO_SMALL:
+		return TEE_ERROR_SHORT_BUFFER;
+	default:
+		return TEE_ERROR_GENERIC;
+	}
+}
+
+TEE_Result ckr2tee_noerr(CK_RV rv)
+{
+	switch (rv) {
+	case CKR_ARGUMENTS_BAD:
+		return TEE_ERROR_BAD_PARAMETERS;
+	case CKR_DEVICE_MEMORY:
+		return TEE_ERROR_OUT_OF_MEMORY;
+	case CKR_BUFFER_TOO_SMALL:
+		return TEE_ERROR_SHORT_BUFFER;
+	case CKR_GENERAL_ERROR:
+		return TEE_ERROR_GENERIC;
+	default:
+		return TEE_SUCCESS;
+	}
+}
+
+CK_RV tee2ckr_error(TEE_Result res)
+{
+	switch (res) {
+	case TEE_SUCCESS:
+		return CKR_OK;
+	case TEE_ERROR_BAD_PARAMETERS:
+		return CKR_ARGUMENTS_BAD;
+	case TEE_ERROR_OUT_OF_MEMORY:
+		return CKR_DEVICE_MEMORY;
+	case TEE_ERROR_SHORT_BUFFER:
+		return CKR_BUFFER_TOO_SMALL;
+	default:
+		return CKR_DEVICE_ERROR;
+	}
+}

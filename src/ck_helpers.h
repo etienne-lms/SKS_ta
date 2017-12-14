@@ -11,6 +11,7 @@
 #include <stddef.h>
 #include <sks_abi.h>
 #include <sks_ta.h>
+#include <tee_internal_api.h>
 
 /*
  * Convert structure struct sks_ck_token_info retreived from TA into a
@@ -85,5 +86,13 @@ int sks_class_has_type(uint32_t class);
 int sks_attr_class_is_key(uint32_t class);
 
 int sks_attr2boolprop_shift(CK_ULONG attr);
+
+/*
+ * Convert CK status into TEE status when matching.
+ * If not, return a TEE success, the CK status will hold the error info.
+ */
+TEE_Result ckr2tee_noerr(CK_RV rv);
+TEE_Result ckr2tee_error(CK_RV rv);
+CK_RV tee2ckr_error(TEE_Result res);
 
 #endif /*__HELPERS_CK_H*/

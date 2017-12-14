@@ -273,22 +273,6 @@ const char *ckr2str(CK_RV id)
 	return unknown;
 }
 
-TEE_Result ckr2tee(CK_RV rv)
-{
-	switch (rv) {
-	case CKR_OK:
-		return TEE_SUCCESS;
-	case CKR_ARGUMENTS_BAD:
-		return TEE_ERROR_BAD_PARAMETERS;
-	case CKR_DEVICE_MEMORY:
-		return TEE_ERROR_OUT_OF_MEMORY;
-	case CKR_BUFFER_TOO_SMALL:
-		return TEE_ERROR_SHORT_BUFFER;
-	default:
-		return TEE_ERROR_GENERIC;
-	}
-}
-
 static struct ck2str skscmd2str_table[] = {
 	CK2STR_ENTRY(SKS_CMD_CK_PING),
 	CK2STR_ENTRY(SKS_CMD_CK_SLOT_LIST),
