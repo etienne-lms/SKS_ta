@@ -126,18 +126,24 @@ TEE_Result TA_InvokeCommandEntryPoint(void *session, uint32_t cmd,
 		goto bail_ck;
 
 	case SKS_CMD_CK_OPEN_RO_SESSION:
-		return ck_token_ro_session(teesess, ctrl, in, out);
+		rv = ck_token_ro_session(teesess, ctrl, in, out);
+		goto bail_ck;
 	case SKS_CMD_CK_OPEN_RW_SESSION:
-		return ck_token_rw_session(teesess, ctrl, in, out);
+		rv = ck_token_rw_session(teesess, ctrl, in, out);
+		goto bail_ck;
 	case SKS_CMD_CK_CLOSE_SESSION:
-		return ck_token_close_session(teesess, ctrl, in, out);
+		rv = ck_token_close_session(teesess, ctrl, in, out);
+		goto bail_ck;
 	case SKS_CMD_CK_CLOSE_ALL_SESSIONS:
-		return ck_token_close_all(teesess, ctrl, in, out);
+		rv = ck_token_close_all(teesess, ctrl, in, out);
+		goto bail_ck;
 
 	case SKS_CMD_CK_CREATE_OBJECT:
-		return entry_create_object(teesess, ctrl, in, out);
+		rv = entry_create_object(teesess, ctrl, in, out);
+		goto bail_ck;
 	case SKS_CMD_CK_DESTROY_OBJECT:
-		return entry_destroy_object(teesess, ctrl, in, out);
+		rv = entry_destroy_object(teesess, ctrl, in, out);
+		goto bail_ck;
 
 	case SKS_CMD_CK_ENCRYPT_INIT:
 	case SKS_CMD_CK_DECRYPT_INIT:

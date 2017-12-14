@@ -518,36 +518,36 @@ CK_RV ck_token_mecha_info(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out)
 }
 
 /* ctrl=[slot-id], in=unused, out=[session-handle] */
-static TEE_Result ck_token_session(int teesess, TEE_Param *ctrl,
-				   TEE_Param *in, TEE_Param *out, bool ro)
+static CK_RV ck_token_session(int teesess, TEE_Param *ctrl,
+				TEE_Param *in, TEE_Param *out, bool ro)
 {
 	struct pkcs11_session *session;
 	uint32_t token_id;
 	struct ck_token *token;
 
 	if (!ctrl || in || !out)
-		return TEE_ERROR_BAD_PARAMETERS;
+		return CKR_ARGUMENTS_BAD;
 
 	if (out->memref.size < sizeof(uint32_t))
-		return TEE_ERROR_BAD_PARAMETERS;
+		return CKR_ARGUMENTS_BAD;
 
 	if (ctrl->memref.size != sizeof(uint32_t))
-		return TEE_ERROR_BAD_PARAMETERS;
+		return CKR_ARGUMENTS_BAD;
 
 	TEE_MemMove(&token_id, ctrl->memref.buffer, sizeof(uint32_t));
 	token = get_token(token_id);
 	if (!token)
-		return TEE_ERROR_BAD_PARAMETERS;
+		return CKR_SLOT_ID_INVALID;
 
 	if (!ro && token->session_state == PKCS11_TOKEN_STATE_READ_ONLY) {
 		// TODO: if token is read-only, refuse RW sessions
 		// See CKR_SESSION_READ_WRITE_SO_EXISTS
-		return TEE_ERROR_GENERIC;
+		return CKR_SESSION_READ_WRITE_SO_EXISTS;
 	}
 
 	session = TEE_Malloc(sizeof(*session), 0);
 	if (!session)
-		return TEE_ERROR_OUT_OF_MEMORY;
+		return CKR_DEVICE_MEMORY;
 
 	session->handle = handle_get(&session_handle_db, session);
 	session->tee_session = teesess;
@@ -560,18 +560,18 @@ static TEE_Result ck_token_session(int teesess, TEE_Param *ctrl,
 	*(uint32_t *)out->memref.buffer = session->handle;
 	out->memref.size = sizeof(uint32_t);
 
-	return TEE_SUCCESS;
+	return CKR_OK;
 }
 
 /* ctrl=[slot-id], in=unused, out=[session-handle] */
-TEE_Result ck_token_ro_session(int teesess, TEE_Param *ctrl,
+CK_RV ck_token_ro_session(int teesess, TEE_Param *ctrl,
 				TEE_Param *in, TEE_Param *out)
 {
 	return ck_token_session(teesess, ctrl, in, out, true);
 }
 
 /* ctrl=[slot-id], in=unused, out=[session-handle] */
-TEE_Result ck_token_rw_session(int teesess, TEE_Param *ctrl,
+CK_RV ck_token_rw_session(int teesess, TEE_Param *ctrl,
 				TEE_Param *in, TEE_Param *out)
 {
 	return ck_token_session(teesess, ctrl, in, out, false);
@@ -598,29 +598,29 @@ static void close_ck_session(struct pkcs11_session *session)
 }
 
 /* ctrl=[session-handle], in=unused, out=unused */
-TEE_Result ck_token_close_session(int teesess, TEE_Param *ctrl,
+CK_RV ck_token_close_session(int teesess, TEE_Param *ctrl,
 				  TEE_Param *in, TEE_Param *out)
 {
 	struct pkcs11_session *session;
 	uint32_t handle;
 
 	if (!ctrl || in || out || ctrl->memref.size < sizeof(uint32_t))
-		return TEE_ERROR_BAD_PARAMETERS;
+		return CKR_ARGUMENTS_BAD;
 
 	TEE_MemMove(&handle, ctrl->memref.buffer, sizeof(uint32_t));
 	session = get_pkcs_session(handle);
 	if (!session)
-		return TEE_ERROR_BAD_PARAMETERS;
+		return CKR_SESSION_HANDLE_INVALID;
 
 	if (session->tee_session != teesess)
-		return TEE_ERROR_BAD_PARAMETERS;
+		return CKR_SESSION_HANDLE_INVALID;
 
 	close_ck_session(session);
 
-	return TEE_SUCCESS;
+	return CKR_OK;
 }
 
-TEE_Result ck_token_close_all(int teesess, TEE_Param *ctrl,
+CK_RV ck_token_close_all(int teesess, TEE_Param *ctrl,
 			      TEE_Param *in, TEE_Param *out)
 {
 	uint32_t token_id;
@@ -628,18 +628,18 @@ TEE_Result ck_token_close_all(int teesess, TEE_Param *ctrl,
 	struct pkcs11_session *session;
 
 	if (!ctrl || in || out)
-		return TEE_ERROR_BAD_PARAMETERS;
+		return CKR_ARGUMENTS_BAD;
 
 	if (out->memref.size < sizeof(uint32_t))
-		return TEE_ERROR_BAD_PARAMETERS;
+		return CKR_ARGUMENTS_BAD;
 
 	if (ctrl->memref.size != sizeof(uint32_t))
-		return TEE_ERROR_BAD_PARAMETERS;
+		return CKR_ARGUMENTS_BAD;
 
 	TEE_MemMove(&token_id, ctrl->memref.buffer, sizeof(uint32_t));
 	token = get_token(token_id);
 	if (!token)
-		return TEE_ERROR_BAD_PARAMETERS;
+		return CKR_SLOT_ID_INVALID;
 
 	LIST_FOREACH(session, &token->session_list, link) {
 		if (session->tee_session != teesess)
@@ -648,7 +648,7 @@ TEE_Result ck_token_close_all(int teesess, TEE_Param *ctrl,
 		close_ck_session(session);
 	}
 
-	return TEE_SUCCESS;
+	return CKR_OK;
 }
 
 /*
