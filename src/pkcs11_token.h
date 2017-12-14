@@ -138,6 +138,8 @@ struct object_list *pkcs11_get_session_objects(struct pkcs11_session *session)
 	return &session->object_list;
 }
 
+bool pkcs11_session_is_read_write(struct pkcs11_session *session);
+
 /* Handler for most PKCS#11 API functions */
 CK_RV ck_slot_list(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out);
 CK_RV ck_slot_info(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out);

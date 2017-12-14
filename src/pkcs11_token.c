@@ -99,6 +99,29 @@ int pkcs11_init(void)
 	return 0;
 }
 
+bool pkcs11_session_is_read_write(struct pkcs11_session *session)
+{
+	if (!session->readwrite)
+		return false;
+
+	if (session->token->session_state == PKCS11_TOKEN_STATE_READ_ONLY)
+		return false;
+
+	switch (session->token->login_state) {
+	case PKCS11_TOKEN_STATE_INVALID:
+	case PKCS11_TOKEN_STATE_SECURITY_OFFICER:
+		return false;
+	case PKCS11_TOKEN_STATE_PUBLIC_SESSIONS:
+	case PKCS11_TOKEN_STATE_USER_SESSIONS:
+	case PKCS11_TOKEN_STATE_CONTEXT_SPECIFIC:
+		break;
+	default:
+		TEE_Panic(0);
+	}
+
+	return true;
+}
+
 struct pkcs11_session *get_pkcs_session(uint32_t ck_handle)
 {
 	return handle_lookup(&session_handle_db, (int)ck_handle);
