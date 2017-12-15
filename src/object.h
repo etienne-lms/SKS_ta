@@ -21,26 +21,20 @@ struct sks_key_object {
 	/* These are for persistent/token objects */
 	void *id;
 	size_t id_size;
-	/* This is AES key specific (TODO: move to a sub structure) */
-	size_t key_size;
-	uint32_t tee_algo;
-	// TODO: list of the session currently processing with the key.
-	// These should not continue processing if the session owning
-	// key creation is closed (applicabble to volatile/non-token ojbects)
 };
 
 LIST_HEAD(object_list, sks_key_object);
 
 struct sks_key_object *object_get_tee_handle(uint32_t ck_handle);
 
-TEE_Result entry_create_object(int teesess, TEE_Param *ctrl,
-				TEE_Param *in, TEE_Param *out);
+CK_RV entry_create_object(int teesess, TEE_Param *ctrl,
+			  TEE_Param *in, TEE_Param *out);
 
-TEE_Result entry_destroy_object(int teesess, TEE_Param *ctrl,
-				TEE_Param *in, TEE_Param *out);
+CK_RV entry_destroy_object(int teesess, TEE_Param *ctrl,
+			   TEE_Param *in, TEE_Param *out);
 
-TEE_Result destroy_object(struct pkcs11_session *session,
-			  struct sks_key_object *object,
-			  bool session_object_only);
+CK_RV destroy_object(struct pkcs11_session *session,
+		     struct sks_key_object *object,
+		     bool session_object_only);
 
 #endif /*__SKS_OBJECT_H*/

@@ -10,6 +10,7 @@
 #include <tee_internal_api_extensions.h>
 
 #include "ck_debug.h"
+#include "ck_helpers.h"
 #include "handle.h"
 #include "object.h"
 #include "pkcs11_object.h"
@@ -37,7 +38,7 @@ struct sks_key_object *object_get_tee_handle(uint32_t ck_handle)
  * @session - session requesting object destruction
  * @hld - object handle returned to hte client
  */
-TEE_Result destroy_object(struct pkcs11_session *session,
+CK_RV destroy_object(struct pkcs11_session *session,
 			  struct sks_key_object *object,
 			  bool session_only)
 {
@@ -82,6 +83,76 @@ TEE_Result destroy_object(struct pkcs11_session *session,
 	return TEE_SUCCESS;
 }
 
+static void cleanup_object(struct sks_key_object *obj)
+{
+	CK_BBOOL persistent;
+
+	if (!obj)
+		return;
+
+	if (obj->key_handle != TEE_HANDLE_NULL) {
+		if (!obj->attributes ||
+		    serial_get_attribute(obj->attributes, CKA_TOKEN,
+					 &persistent, NULL))
+			TEE_Panic(0);
+
+		if (persistent)
+			TEE_CloseAndDeletePersistentObject1(obj->key_handle);
+		else
+			TEE_FreeTransientObject(obj->key_handle);
+	}
+
+	handle_put(&object_handle_db, obj->ck_handle);
+	TEE_Free(obj->id);
+	TEE_Free(obj);
+}
+
+static bool session_allows_persistent_object(void *session)
+{
+	/* Currently supporting only pkcs11 session */
+	struct pkcs11_session *ck_session = session;
+
+	return pkcs11_session_is_read_write(ck_session);
+}
+
+static struct object_list *get_session_objects(void *session)
+{
+	/* Currently supporting only pkcs11 session */
+	struct pkcs11_session *ck_session = session;
+
+	return pkcs11_get_session_objects(ck_session);
+}
+
+static CK_RV get_tee_object_info(uint32_t *type, uint32_t *attr, void *head)
+{
+	switch (serial_get_type(head)) {
+	case CKK_AES:
+		*type = TEE_TYPE_AES;
+		goto secret;
+	case CKK_MD5_HMAC:
+		*type = TEE_TYPE_HMAC_MD5;
+		goto secret;
+	case CKK_SHA_1_HMAC:
+		*type = TEE_TYPE_HMAC_SHA1;
+		goto secret;
+	case CKK_SHA256_HMAC:
+		*type = TEE_TYPE_HMAC_SHA256;
+		goto secret;
+	case CKK_SHA384_HMAC:
+		*type = TEE_TYPE_HMAC_SHA384;
+		goto secret;
+	case CKK_SHA224_HMAC:
+		*type = TEE_TYPE_HMAC_SHA224;
+		goto secret;
+	default:
+		return CKR_ATTRIBUTE_TYPE_INVALID;
+	}
+
+secret:
+	*attr = TEE_ATTR_SECRET_VALUE;
+	return CKR_OK;
+}
+
 /*
  * Create an AES key object
  *
@@ -89,70 +160,120 @@ TEE_Result destroy_object(struct pkcs11_session *session,
  * @head - serialized attributes (incl. CKA_VALUE attribute storing the key)
  * @hld - object handle returned to hte client
  */
-static TEE_Result create_aes_key(struct pkcs11_session *session,
-				 void *head, uint32_t *hdl)
+static CK_RV create_object(void *session, void *head, uint32_t *hdl)
 {
-	CK_RV rv;
-	TEE_Result res;
+	CK_RV rv = CKR_OK;
+	TEE_Result res = TEE_SUCCESS;
 	struct sks_key_object *obj;
-	char *key_data;
-	size_t key_size = 0;
+	char *obj_data;
+	size_t obj_size = 0;
 	uint8_t is_persistent;
 	TEE_Attribute tee_key_attr;
+	int obj_handle;
+	uint32_t tee_obj_type;
+	uint32_t tee_obj_attr;
 
 	/*
 	 * We do not check the key attributes. At this point, key attributes
 	 * are expected consistent and reliable.
 	 */
+
 	obj = TEE_Malloc(sizeof(*obj), TEE_USER_MEM_HINT_NO_FILL_ZERO);
 	if (!obj)
-		return TEE_ERROR_OUT_OF_MEMORY;
+		return CKR_DEVICE_MEMORY;
+
+	obj_handle = handle_get(&object_handle_db, obj);
+	if (obj_handle < 0 || obj_handle > 0x7FFFFFFF) {
+		TEE_Free(obj);
+		return CKR_FUNCTION_FAILED;
+	}
 
 	obj->key_handle = TEE_HANDLE_NULL;
+	obj->id = NULL;
 	obj->attributes = head;
+	obj->ck_handle = (uint32_t)obj_handle;
 
 	/* Get the key data from the serial object */
-	rv = serial_get_attribute(head, CKA_VALUE, NULL, &key_size);
-	if (rv != CKR_BUFFER_TOO_SMALL)
-		TEE_Panic(CKR_ATTRIBUTE_VALUE_INVALID);
+	rv = serial_get_attribute(head, CKA_VALUE, NULL, &obj_size);
+	if (rv != CKR_BUFFER_TOO_SMALL) {
+		rv = CKR_ATTRIBUTE_VALUE_INVALID;
+		goto bail;
+	}
 
 	rv = serial_get_attribute_ptr(head, CKA_VALUE,
-				      (void **)&key_data, &key_size);
-	if (rv)
+				      (void **)&obj_data, &obj_size);
+	if (rv) {
+		DMSG("No data attribute found");
 		TEE_Panic(0);
-
-	/* Create the TEE object */
-	res = TEE_AllocateTransientObject(TEE_TYPE_AES, 256, &obj->key_handle);
-	if (res)
-		goto bail;
-
-	TEE_InitRefAttribute(&tee_key_attr, TEE_ATTR_SECRET_VALUE,
-				key_data, key_size);
-
-	res = TEE_PopulateTransientObject(obj->key_handle, &tee_key_attr, 1);
-	if (res) {
-		EMSG("TEE_PopulateTransientObject failed, %" PRIx32, res);
-		goto bail;
 	}
 
 	/* Session bound or persistent object? */
 	rv = serial_get_attribute(head, CKA_TOKEN, &is_persistent, NULL);
-	if (rv)
+	if (rv) {
+		DMSG("No token attribute found");
 		TEE_Panic(0);
+	}
 
-	if (is_persistent) {
+	/* Non raw data object get their data content store aside attrbiutes */
+	switch (serial_get_class(head)) {
+	case CKO_DATA:
+		break;
+	case CKO_SECRET_KEY:
+	case CKO_PUBLIC_KEY:
+	case CKO_PRIVATE_KEY:
+		rv = get_tee_object_info(&tee_obj_type, &tee_obj_attr, head);
+		if (rv) {
+			DMSG("get_tee_object_info failed, %s", ckr2str(rv));
+			goto bail;
+		}
+
+		res = TEE_AllocateTransientObject(tee_obj_type, obj_size,
+						  &obj->key_handle);
+		if (res) {
+			DMSG("TEE_AllocateTransientObject failed, %" PRIx32,
+				res);
+			goto bail;
+		}
+
+		TEE_InitRefAttribute(&tee_key_attr, tee_obj_attr,
+				     obj_data, obj_size);
+
+		res = TEE_PopulateTransientObject(obj->key_handle,
+						  &tee_key_attr, 1);
+		if (res) {
+			DMSG("TEE_PopulateTransientObject failed, %" PRIx32,
+				res);
+			goto bail;
+		}
+
+		// TODO: remove the data attribute from the object
+		// since now the data are in a transcient object
+		break;
+	default:
+		TEE_Panic(0);
+	}
+
+	if (is_persistent &&
+	    obj->key_handle != TEE_HANDLE_NULL &&
+	    session_allows_persistent_object(session)) {
 		TEE_ObjectHandle handle = obj->key_handle;
 
 		/*
 		 * Create a unique ID
 		 * FIXME; find a better ID scheme than a random number
+		 * TODO; store the TEE ID in the object attribute list
 		 */
 		obj->id_size = 32;
-		obj->id = TEE_Malloc(obj->id_size, TEE_USER_MEM_HINT_NO_FILL_ZERO);
-		if (!obj->id)
-			return TEE_ERROR_OUT_OF_MEMORY;
+		obj->id = TEE_Malloc(obj->id_size,
+				     TEE_USER_MEM_HINT_NO_FILL_ZERO);
+		if (!obj->id) {
+			rv = CKR_DEVICE_MEMORY;
+			goto bail;
+		}
 
 		TEE_GenerateRandom(obj->id, obj->id_size);
+
+		// TODO: add TEE ID as an atttirbute of the object.
 
 		res = TEE_CreatePersistentObject(TEE_STORAGE_PRIVATE,
 						 obj->id, obj->id_size,
@@ -161,7 +282,7 @@ static TEE_Result create_aes_key(struct pkcs11_session *session,
 						 TEE_DATA_FLAG_ACCESS_WRITE_META |
 						 TEE_DATA_FLAG_OVERWRITE, /* TODO: don't overwrite! */
 						 handle,
-						 key_data, key_size,
+						 obj_data, obj_size,
 						 &obj->key_handle);
 
 		TEE_FreeTransientObject(handle);
@@ -169,73 +290,38 @@ static TEE_Result create_aes_key(struct pkcs11_session *session,
 			obj->key_handle = TEE_HANDLE_NULL;
 			goto bail;
 		}
+	}
 
-		//TODO: add the object to the secure storage SKS database
+	if (is_persistent && session_allows_persistent_object(session)) {
+
+		//TODO: add object to the SKS persistent database
 
 	}
 
+	LIST_INSERT_HEAD(get_session_objects(session), obj, link);
 	obj->session_owner = session;
-	LIST_INSERT_HEAD(&session->object_list, obj, link);
 
 	// TODO: debug trace
 	//serial_trace_attributes_from_head("[create]", object->attributes);
 
-	res = TEE_SUCCESS;
-
 bail:
-	if (res) {
-		TEE_FreeTransientObject(obj->key_handle);
-		TEE_Free(obj);
-	} else {
-		int ck_handle = handle_get(&object_handle_db, obj);
+	if (res)
+		rv = tee2ckr_error(res);
 
-		if (ck_handle < 0 || ck_handle > 0x7FFFFFFF)
-			return TEE_ERROR_GENERIC; // FIXME: errno
-
-		obj->ck_handle = (uint32_t)ck_handle;
+	if (rv)
+		cleanup_object(obj);
+	else
 		*hdl = obj->ck_handle;
-	}
 
-	return res;
-}
-
-
-static TEE_Result create_sym_key(struct pkcs11_session *session,
-				 void *head, uint32_t *hdl)
-{
-	switch (serial_get_type(head)) {
-	case CKK_AES:
-		return create_aes_key(session, head, hdl);
-	default:
-		return TEE_ERROR_NOT_SUPPORTED;
-	}
-}
-
-/*
- * Create an raw DATA object
- *
- * @session - session onwing the object creation
- * @head - pointer to serialized attributes
- * @hld - object handle returned to hte client
- */
-static TEE_Result create_data_blob(struct pkcs11_session __unused *session,
-				   void __unused *head, uint32_t __unused *hdl)
-{
-	// TODO
-	// - Create an object reference
-	// - Sanitize the properties
-	// - Save in secure storage if CKA_TOKEN data == true
-
-	return TEE_ERROR_NOT_SUPPORTED;
+	return rv;
 }
 
 /*
  * Create an object from a clear content provided by client
  */
-TEE_Result entry_create_object(int teesess, TEE_Param *ctrl,
-				TEE_Param *in, TEE_Param *out)
+CK_RV entry_create_object(int teesess,
+			  TEE_Param *ctrl, TEE_Param *in, TEE_Param *out)
 {
-	TEE_Result res;
 	CK_RV rv;
 	char *ctrl_ptr;
 	uint32_t ck_session;
@@ -247,14 +333,14 @@ TEE_Result entry_create_object(int teesess, TEE_Param *ctrl,
 	void *obj_head = NULL;
 
 	if (!ctrl || in || !out || out->memref.size < sizeof(uint32_t))
-		return TEE_ERROR_BAD_PARAMETERS;
+		return CKR_ARGUMENTS_BAD;
 
 	ctrl_ptr = ctrl->memref.buffer;
 	ck_session = *(uint32_t *)(void *)ctrl_ptr;
 
 	session = get_pkcs_session(ck_session);
 	if (!session || session->tee_session != teesess)
-		return TEE_ERROR_BAD_PARAMETERS;
+		return CKR_SESSION_HANDLE_INVALID;
 
 	/*
 	 * Safely copy and sanitize the client attribute serial object
@@ -262,49 +348,47 @@ TEE_Result entry_create_object(int teesess, TEE_Param *ctrl,
 	temp_size = ctrl->memref.size - sizeof(uint32_t);
 	temp = TEE_Malloc(temp_size, TEE_USER_MEM_HINT_NO_FILL_ZERO);
 	if (!temp)
-		return TEE_ERROR_OUT_OF_MEMORY;
+		return CKR_DEVICE_MEMORY;
 
 	TEE_MemMove(temp, ctrl_ptr + sizeof(uint32_t), temp_size);
 	rv = serial_sanitize_attributes((void **)&head, temp, temp_size);
 	if (rv)
-		return ckr2tee(rv);
-
-	TEE_Free(temp);
+		goto bail;
 
 	/* Route to the object manager */
 	switch (serial_get_class(head)) {
 	case CKO_DATA:
-		res = TEE_ERROR_BAD_PARAMETERS;
-		obj_head = set_pkcs11_data_object_attributes(head);
-		if (obj_head)
-			res = create_data_blob(session, obj_head, &obj_handle);
+		rv = set_pkcs11_data_object_attributes(&obj_head, head);
 		break;
 	case CKO_SECRET_KEY:
-		res = TEE_ERROR_BAD_PARAMETERS;
-		obj_head = set_pkcs11_imported_symkey_attributes(head);
-		if (obj_head)
-			res = create_sym_key(session, obj_head, &obj_handle);
+		rv = set_pkcs11_imported_symkey_attributes(&obj_head, head);
 		break;
 	default:
-		return TEE_ERROR_NOT_SUPPORTED;
+		rv = CKR_OBJECT_HANDLE_INVALID;
+		break;
 	}
 
+	if (rv)
+		goto bail;
+
+	rv = create_object(session, obj_head, &obj_handle);
+
+bail:
+	TEE_Free(temp);
 	TEE_Free(head);
 
-	if (res) {
+	if (rv) {
 		TEE_Free(obj_head);
-		return res;
+	} else {
+		TEE_MemMove(out->memref.buffer, &obj_handle, sizeof(uint32_t));
+		out->memref.size = sizeof(uint32_t);
 	}
 
-	/* Return object handle to the client */
-	TEE_MemMove(out->memref.buffer, &obj_handle, sizeof(uint32_t));
-	out->memref.size = sizeof(uint32_t);
-
-	return res;
+	return rv;
 }
 
-TEE_Result entry_destroy_object(int teesess, TEE_Param *ctrl,
-				TEE_Param *in,	TEE_Param *out)
+CK_RV  entry_destroy_object(int teesess, TEE_Param *ctrl,
+			    TEE_Param *in, TEE_Param *out)
 {
 	size_t ctrl_size;
 	char *ctrl_ptr;
@@ -314,36 +398,34 @@ TEE_Result entry_destroy_object(int teesess, TEE_Param *ctrl,
 	struct sks_key_object *object;
 
 	if (!ctrl || in || out)
-		return TEE_ERROR_BAD_PARAMETERS;
+		return CKR_ARGUMENTS_BAD;
 
 	ctrl_size = ctrl->memref.size;
 	ctrl_ptr = ctrl->memref.buffer;
 
 	/* First serial arg: [32b-session-handle] */
 	if (ctrl_size < sizeof(uint32_t))
-		return TEE_ERROR_BAD_PARAMETERS;
+		return CKR_ARGUMENTS_BAD;
 
 	TEE_MemMove(&session_handle, ctrl_ptr, sizeof(uint32_t));
 	ctrl_ptr += sizeof(uint32_t);
 	ctrl_size -= sizeof(uint32_t);
 
 	session = get_pkcs_session(session_handle);
-
 	if (!session || session->tee_session != teesess)
-		return TEE_ERROR_BAD_PARAMETERS;
+		return CKR_SESSION_HANDLE_INVALID;
 
 	/* Next serial arg: [32b-object-handle] */
 	if (ctrl_size < sizeof(uint32_t))
-		return TEE_ERROR_BAD_PARAMETERS;
+		return CKR_ARGUMENTS_BAD;
 
 	TEE_MemMove(&object_handle, ctrl_ptr, sizeof(uint32_t));
 	ctrl_ptr += sizeof(uint32_t);
 	ctrl_size -= sizeof(uint32_t);
 
 	object = object_get_tee_handle(object_handle);
-
 	if (!object || object->session_owner != session)
-		return TEE_ERROR_BAD_PARAMETERS;
+		return CKR_KEY_HANDLE_INVALID;
 
 	return destroy_object(session, object, false);
 }

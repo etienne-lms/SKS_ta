@@ -84,7 +84,7 @@ static CK_RV pkcs11_import_object_boolprop(struct serializer *obj, void *head,
 	return serialize_sks_ref(obj, attribute, attr, sizeof(CK_BBOOL));
 }
 
-void *set_pkcs11_imported_symkey_attributes(void *ref)
+CK_RV set_pkcs11_imported_symkey_attributes(void **out, void *ref)
 {
 	CK_RV rv;
 	struct serializer obj;
@@ -188,11 +188,14 @@ void *set_pkcs11_imported_symkey_attributes(void *ref)
 		rv = serialize_sks_ref(&obj, CKA_VALUE, attr, size);
 
 	rv = serial_finalize_object(&obj);
+
 bail:
 	if (rv)
 		release_serial_object(&obj);
+	else
+		*out = obj.buffer;
 
-	return rv ? NULL : obj.buffer;
+	return rv;
 }
 
 /*
@@ -200,7 +203,7 @@ bail:
  * and consistent class and type attributes. All other attributes are check
  * here.
  */
-void *set_pkcs11_data_object_attributes(void *ref)
+CK_RV set_pkcs11_data_object_attributes(void **out, void *ref)
 {
 	CK_RV rv;
 	struct serializer obj;
@@ -253,11 +256,13 @@ void *set_pkcs11_data_object_attributes(void *ref)
 			goto bail;
 	}
 
-bail:
-	if (rv) {
-		release_serial_object(&obj);
-		return NULL;
-	}
+	rv = serial_finalize_object(&obj);
 
-	return obj.buffer;
+bail:
+	if (rv)
+		release_serial_object(&obj);
+	else
+		*out = obj.buffer;
+
+	return rv;
 }
