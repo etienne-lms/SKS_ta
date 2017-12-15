@@ -8,6 +8,7 @@
 #include <tee_internal_api_extensions.h>
 
 #include "ck_debug.h"
+#include "ck_helpers.h"
 #include "object.h"
 #include "pkcs11_token.h"
 #include "processing.h"
@@ -71,7 +72,7 @@ struct tee_operation_params {
 };
 
 /* TODO: get a Cryptoki return value out of this */
-static TEE_Result tee_operarion_params(struct tee_operation_params *params,
+static CK_RV tee_operarion_params(struct tee_operation_params *params,
 				CK_MECHANISM_PTR ck_mechanism,
 				struct sks_key_object *sks_key,
 				bool decrypt)
@@ -80,7 +81,7 @@ static TEE_Result tee_operarion_params(struct tee_operation_params *params,
 
 	if (serial_get_attribute(sks_key->attributes, CKA_KEY_TYPE,
 				  &key_type, NULL))
-		return TEE_ERROR_BAD_PARAMETERS;
+		return CKR_GENERAL_ERROR;
 
 	switch (key_type) {
 	case CKK_AES:
@@ -95,21 +96,21 @@ static TEE_Result tee_operarion_params(struct tee_operation_params *params,
 			params->algo = TEE_ALG_AES_CBC_NOPAD;
 			break;
 		case CKM_AES_CBC_PAD:
-			return TEE_ERROR_NOT_SUPPORTED;
+			return CKR_FUNCTION_FAILED;
 		case CKM_AES_CTS:
 		case CKM_AES_CTR:
 		case CKM_AES_GCM:
 		case CKM_AES_CCM:
-			return TEE_ERROR_NOT_SUPPORTED;
+			return CKR_FUNCTION_FAILED;
 		default:
-			return TEE_ERROR_BAD_PARAMETERS;
+			return CKR_KEY_TYPE_INCONSISTENT;
 		}
 		break;
 	default:
-		return TEE_ERROR_NOT_SUPPORTED;
+		return CKR_FUNCTION_FAILED;
 	}
 
-	return TEE_SUCCESS;
+	return CKR_OK;
 }
 
 
@@ -118,12 +119,10 @@ static TEE_Result tee_operarion_params(struct tee_operation_params *params,
  * in = none
  * out = none
  */
-TEE_Result entry_cipher_init(int teesess,
-				TEE_Param *ctrl,
-				TEE_Param *in,
-				TEE_Param *out,
-				int decrypt)
+CK_RV entry_cipher_init(int teesess, TEE_Param *ctrl,
+			TEE_Param *in, TEE_Param *out, int decrypt)
 {
+	CK_RV rv;
 	TEE_Result res;
 	uint32_t session;
 	uint32_t key_handle;
@@ -137,46 +136,38 @@ TEE_Result entry_cipher_init(int teesess,
 
 	/* Arguments */
 	if (!ctrl || in || out || ctrl->memref.size < 2 * sizeof(uint32_t))
-		return TEE_ERROR_BAD_PARAMETERS;
+		return CKR_ARGUMENTS_BAD;
 
 	session = *(uint32_t *)(void *)ctrl2;
 	ctrl2 += sizeof(uint32_t);
 	ctrl2_size -= sizeof(uint32_t);
 
 	pkcs_session = get_pkcs_session(session);
-	if (!pkcs_session || pkcs_session->tee_session != teesess) {
-		res = TEE_ERROR_BAD_PARAMETERS;
-		goto error;
-	}
+	if (!pkcs_session || pkcs_session->tee_session != teesess)
+		return CKR_SESSION_HANDLE_INVALID;
 
 	key_handle = *(uint32_t *)(void *)ctrl2;
 	ctrl2 += sizeof(uint32_t);
 	ctrl2_size -= sizeof(uint32_t);
 
 	sks_key = object_get_tee_handle(key_handle);
-	if (!sks_key) {
-		res = TEE_ERROR_BAD_PARAMETERS;
-		goto error;
-	}
+	if (!sks_key)
+		return CKR_KEY_HANDLE_INVALID;
 
 	TEE_MemMove(&ck_mechanism, ctrl2, sizeof(ck_mechanism));
 
-	/* Check states */
+	/* Check pkcs11 token/session states */
 	if (set_pkcs_session_processing_state(session,
-					      PKCS11_SESSION_ENCRYPTING)) {
-		res = TEE_ERROR_BAD_STATE;
-		goto error;
-	}
+					      PKCS11_SESSION_ENCRYPTING))
+		return CKR_OPERATION_ACTIVE;
 
-	if (!key_matches_cipher(&ck_mechanism, sks_key, decrypt)) {
-		res = TEE_ERROR_BAD_PARAMETERS;
-		goto error;
-	}
+	if (!key_matches_cipher(&ck_mechanism, sks_key, decrypt))
+		return CKR_KEY_FUNCTION_NOT_PERMITTED;
 
 	/* Allocate a TEE operation for the target processing */
-	res = tee_operarion_params(&tee_op_params, &ck_mechanism, sks_key,
+	rv = tee_operarion_params(&tee_op_params, &ck_mechanism, sks_key,
 				   decrypt);
-	if (res)
+	if (rv)
 		goto error;
 
 	if (pkcs_session->tee_op_handle != TEE_HANDLE_NULL)
@@ -186,17 +177,18 @@ TEE_Result entry_cipher_init(int teesess,
 				    tee_op_params.algo, tee_op_params.mode,
 				    tee_op_params.size * 8);
 	if (res) {
-		EMSG("Failed to allocate operation");
+		DMSG("Failed to allocateoperation");
+		rv = tee2ckr_error(res);
 		goto error;
 	}
 
 	res = TEE_SetOperationKey(pkcs_session->tee_op_handle,
 				  sks_key->key_handle);
 	if (res) {
-		EMSG("TEE_SetOperationKey failed %x", res);
+		DMSG("TEE_SetOperationKey failed %x", res);
+		rv = tee2ckr_error(res);
 		goto error;
 	}
-
 
 	/* Specifc cipher initialization */
 	if (serial_get_attribute(sks_key->attributes, CKA_KEY_TYPE,
@@ -219,13 +211,14 @@ TEE_Result entry_cipher_init(int teesess,
 		break;
 	}
 
-	return TEE_SUCCESS;
+	return CKR_OK;
 
 error:
-	if (set_pkcs_session_processing_state(session, PKCS11_SESSION_READY))
+	if (set_pkcs_session_processing_state(session,
+					      PKCS11_SESSION_READY))
 		TEE_Panic(0);
 
-	return res;
+	return rv;
 }
 
 /*
@@ -233,32 +226,32 @@ error:
  * in = data buffer
  * out = data buffer
  */
-TEE_Result entry_cipher_update(int teesess,
-				TEE_Param *ctrl,
-				TEE_Param *in,
-				TEE_Param *out,
-				int decrypt)
+CK_RV entry_cipher_update(int teesess, TEE_Param *ctrl,
+			  TEE_Param *in, TEE_Param *out, int decrypt)
 {
+	TEE_Result res;
 	uint32_t session;
 	struct pkcs11_session *pkcs_session;
 
 	if (!ctrl || ctrl->memref.size < sizeof(uint32_t))
-		return TEE_ERROR_BAD_PARAMETERS;
+		return CKR_ARGUMENTS_BAD;
 
 	session = *(uint32_t *)(void *)ctrl->memref.buffer;;
 
 	pkcs_session = get_pkcs_session(session);
 	if (!pkcs_session || pkcs_session->tee_session != teesess)
-		return TEE_ERROR_BAD_PARAMETERS;
+		return CKR_SESSION_HANDLE_INVALID;
 
 	if (check_pkcs_session_processing_state(session, decrypt ?
 						PKCS11_SESSION_DECRYPTING :
 						PKCS11_SESSION_ENCRYPTING))
-		return TEE_ERROR_BAD_STATE;
+		return CKR_OPERATION_NOT_INITIALIZED;
 
-	return TEE_CipherUpdate(pkcs_session->tee_op_handle,
+	res = TEE_CipherUpdate(pkcs_session->tee_op_handle,
 				in->memref.buffer, in->memref.size,
 				out->memref.buffer, &out->memref.size);
+
+	return tee2ckr_error(res);
 }
 
 /*
@@ -266,11 +259,8 @@ TEE_Result entry_cipher_update(int teesess,
  * in = none
  * out = data buffer
  */
-TEE_Result entry_cipher_final(int teesess,
-				TEE_Param *ctrl,
-				TEE_Param *in,
-				TEE_Param *out,
-				int __unused decrypt)
+CK_RV entry_cipher_final(int teesess, TEE_Param *ctrl,
+			 TEE_Param *in,	TEE_Param *out,	int decrypt)
 {
 	TEE_Result res;
 	uint32_t session;
@@ -278,18 +268,18 @@ TEE_Result entry_cipher_final(int teesess,
 	size_t dumm_length = 0;
 
 	if (!ctrl || ctrl->memref.size < sizeof(uint32_t))
-		return TEE_ERROR_BAD_PARAMETERS;
+		return CKR_ARGUMENTS_BAD;
 
 	session = *(uint32_t *)(void *)ctrl->memref.buffer;;
 
 	pkcs_session = get_pkcs_session(session);
 	if (!pkcs_session || pkcs_session->tee_session != teesess)
-		return TEE_ERROR_BAD_PARAMETERS;
+		return CKR_SESSION_HANDLE_INVALID;
 
 	if (check_pkcs_session_processing_state(session, decrypt ?
 						PKCS11_SESSION_DECRYPTING :
 						PKCS11_SESSION_ENCRYPTING))
-		return TEE_ERROR_BAD_STATE;
+		return CKR_OPERATION_NOT_INITIALIZED;
 
 	res = TEE_CipherDoFinal(pkcs_session->tee_op_handle,
 				in ? in->memref.buffer : NULL,
@@ -304,6 +294,5 @@ TEE_Result entry_cipher_final(int teesess,
 	TEE_FreeOperation(pkcs_session->tee_op_handle);
 	pkcs_session->tee_op_handle = TEE_HANDLE_NULL;
 
-	return res;
+	return tee2ckr_error(res);
 }
-

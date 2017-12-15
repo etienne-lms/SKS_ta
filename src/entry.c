@@ -147,16 +147,19 @@ TEE_Result TA_InvokeCommandEntryPoint(void *session, uint32_t cmd,
 
 	case SKS_CMD_CK_ENCRYPT_INIT:
 	case SKS_CMD_CK_DECRYPT_INIT:
-		return entry_cipher_init(teesess, ctrl, in, out,
-					 cmd == SKS_CMD_CK_DECRYPT_INIT);
+		rv = entry_cipher_init(teesess, ctrl, in, out,
+					cmd == SKS_CMD_CK_DECRYPT_INIT);
+		goto bail_ck;
 	case SKS_CMD_CK_ENCRYPT_UPDATE:
 	case SKS_CMD_CK_DECRYPT_UPDATE:
-		return entry_cipher_update(teesess, ctrl, in, out,
-					   cmd == SKS_CMD_CK_DECRYPT_UPDATE);
+		rv = entry_cipher_update(teesess, ctrl, in, out,
+					 cmd == SKS_CMD_CK_DECRYPT_UPDATE);
+		goto bail_ck;
 	case SKS_CMD_CK_ENCRYPT_FINAL:
 	case SKS_CMD_CK_DECRYPT_FINAL:
-		return entry_cipher_final(teesess, ctrl, in, out,
-					  cmd == SKS_CMD_CK_DECRYPT_FINAL);
+		rv = entry_cipher_final(teesess, ctrl, in, out,
+					cmd == SKS_CMD_CK_DECRYPT_FINAL);
+		goto bail_ck;
 
 	default:
 		EMSG("Command ID 0x%x is not supported", cmd);
