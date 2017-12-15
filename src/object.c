@@ -24,10 +24,10 @@
  */
 static struct handle_db object_handle_db = HANDLE_DB_INITIALIZER;
 
-struct sks_key_object *object_get_tee_handle(uint32_t ck_handle)
+struct sks_object *object_get_tee_handle(uint32_t ck_handle)
 {
 	int handle = (int)ck_handle;
-	struct sks_key_object *obj = handle_lookup(&object_handle_db, handle);
+	struct sks_object *obj = handle_lookup(&object_handle_db, handle);
 
 	return obj;
 }
@@ -39,7 +39,7 @@ struct sks_key_object *object_get_tee_handle(uint32_t ck_handle)
  * @hld - object handle returned to hte client
  */
 CK_RV destroy_object(struct pkcs11_session *session,
-			  struct sks_key_object *object,
+			  struct sks_object *object,
 			  bool session_only)
 {
 	CK_BBOOL is_persistent;
@@ -83,7 +83,7 @@ CK_RV destroy_object(struct pkcs11_session *session,
 	return TEE_SUCCESS;
 }
 
-static void cleanup_object(struct sks_key_object *obj)
+static void cleanup_object(struct sks_object *obj)
 {
 	CK_BBOOL persistent;
 
@@ -164,7 +164,7 @@ static CK_RV create_object(void *session, void *head, uint32_t *hdl)
 {
 	CK_RV rv = CKR_OK;
 	TEE_Result res = TEE_SUCCESS;
-	struct sks_key_object *obj;
+	struct sks_object *obj;
 	char *obj_data;
 	size_t obj_size = 0;
 	uint8_t is_persistent;
@@ -398,7 +398,7 @@ CK_RV  entry_destroy_object(int teesess, TEE_Param *ctrl,
 	uint32_t session_handle;
 	uint32_t object_handle;
 	struct pkcs11_session *session;
-	struct sks_key_object *object;
+	struct sks_object *object;
 
 	if (!ctrl || in || out)
 		return CKR_ARGUMENTS_BAD;

@@ -20,7 +20,7 @@ static const char dummy_null_aes_iv[DUMMY_NULL_AES_IV_SIZE];
 
 /* TODO: get a Cryptoki return value out of this */
 static bool key_matches_cipher(CK_MECHANISM_PTR ck_mechanism,
-				  struct sks_key_object *sks_key,
+				  struct sks_object *sks_key,
 				  bool decrypt)
 {
 	uint32_t key_class;
@@ -74,7 +74,7 @@ struct tee_operation_params {
 /* TODO: get a Cryptoki return value out of this */
 static CK_RV tee_operarion_params(struct tee_operation_params *params,
 				CK_MECHANISM_PTR ck_mechanism,
-				struct sks_key_object *sks_key,
+				struct sks_object *sks_key,
 				bool decrypt)
 {
 	uint32_t key_type;
@@ -128,7 +128,7 @@ CK_RV entry_cipher_init(int teesess, TEE_Param *ctrl,
 	uint32_t key_handle;
 	char *ctrl2 = ctrl->memref.buffer;
 	size_t ctrl2_size = ctrl->memref.size;
-	struct sks_key_object *sks_key;
+	struct sks_object *sks_key;
 	CK_MECHANISM ck_mechanism;
 	struct pkcs11_session *pkcs_session;
 	struct tee_operation_params tee_op_params;
