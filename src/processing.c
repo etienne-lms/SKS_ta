@@ -156,13 +156,13 @@ CK_RV entry_cipher_init(int teesess, TEE_Param *ctrl,
 
 	TEE_MemMove(&ck_mechanism, ctrl2, sizeof(ck_mechanism));
 
+	if (!key_matches_cipher(&ck_mechanism, sks_key, decrypt))
+		return CKR_KEY_FUNCTION_NOT_PERMITTED;
+
 	/* Check pkcs11 token/session states */
 	if (set_pkcs_session_processing_state(session,
 					      PKCS11_SESSION_ENCRYPTING))
 		return CKR_OPERATION_ACTIVE;
-
-	if (!key_matches_cipher(&ck_mechanism, sks_key, decrypt))
-		return CKR_KEY_FUNCTION_NOT_PERMITTED;
 
 	/* Allocate a TEE operation for the target processing */
 	rv = tee_operarion_params(&tee_op_params, &ck_mechanism, sks_key,
@@ -218,6 +218,11 @@ error:
 					      PKCS11_SESSION_READY))
 		TEE_Panic(0);
 
+	if (pkcs_session->tee_op_handle != TEE_HANDLE_NULL) {
+		TEE_FreeOperation(pkcs_session->tee_op_handle);
+		pkcs_session->tee_op_handle = TEE_HANDLE_NULL;
+	}
+
 	return rv;
 }
 
@@ -250,6 +255,15 @@ CK_RV entry_cipher_update(int teesess, TEE_Param *ctrl,
 	res = TEE_CipherUpdate(pkcs_session->tee_op_handle,
 				in->memref.buffer, in->memref.size,
 				out->memref.buffer, &out->memref.size);
+
+	if (res != TEE_SUCCESS && res != TEE_ERROR_SHORT_BUFFER) {
+		if (set_pkcs_session_processing_state(session,
+						      PKCS11_SESSION_READY))
+			TEE_Panic(0);
+
+		TEE_FreeOperation(pkcs_session->tee_op_handle);
+		pkcs_session->tee_op_handle = TEE_HANDLE_NULL;
+	}
 
 	return tee2ckr_error(res);
 }
