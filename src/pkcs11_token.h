@@ -35,7 +35,7 @@
 
 
 enum pkcs11_token_login_state {
-	PKCS11_TOKEN_STATE_INVALID = 0,
+	PKCS11_TOKEN_STATE_INVALID = 0,		/* token default state */
 	PKCS11_TOKEN_STATE_PUBLIC_SESSIONS,
 	PKCS11_TOKEN_STATE_SECURITY_OFFICER,
 	PKCS11_TOKEN_STATE_USER_SESSIONS,
@@ -94,7 +94,7 @@ struct ck_token {
  * processing state.
  */
 enum pkcs11_session_processing {
-	PKCS11_SESSION_READY,
+	PKCS11_SESSION_READY = 0,		/* session default state */
 	PKCS11_SESSION_ENCRYPTING,
 	PKCS11_SESSION_DECRYPTING,
 	PKCS11_SESSION_DIGESTING,
