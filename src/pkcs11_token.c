@@ -196,7 +196,7 @@ static void *get_arg(void *dst, size_t size, void *src, size_t *src_size)
 }
 
 /* ctrl=[slot-id][pin-size][pin], in=unused, out=unused */
-TEE_Result ck_token_initialize(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out)
+CK_RV ck_token_initialize(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out)
 {
 	char *ctrl_arg;
 	size_t ctrl_size;
@@ -207,47 +207,47 @@ TEE_Result ck_token_initialize(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out)
 	char label[32 + 1];
 
 	if (!ctrl || in || out)
-		return ckr2tee(CKR_ARGUMENTS_BAD);
+		return CKR_ARGUMENTS_BAD;
 
 	ctrl_arg = ctrl->memref.buffer;
 	ctrl_size = ctrl->memref.size;
 
 	ctrl_arg = get_arg(&token_id, sizeof(uint32_t), ctrl_arg, &ctrl_size);
 	if (!ctrl_arg)
-		return ckr2tee(CKR_ARGUMENTS_BAD);
+		return CKR_ARGUMENTS_BAD;
 
 	ctrl_arg = get_arg(&pin_size, sizeof(uint32_t), ctrl_arg, &ctrl_size);
 	if (!ctrl_arg)
-		return ckr2tee(CKR_ARGUMENTS_BAD);
+		return CKR_ARGUMENTS_BAD;
 
 	pin = ctrl_arg;
 	ctrl_arg = get_arg(NULL, pin_size, ctrl_arg, &ctrl_size);
 	if (!ctrl_arg)
-		return ckr2tee(CKR_ARGUMENTS_BAD);
+		return CKR_ARGUMENTS_BAD;
 
 	ctrl_arg = get_arg(label, 32 * sizeof(char), ctrl_arg, &ctrl_size);
 	if (!ctrl_arg)
-		return ckr2tee(CKR_ARGUMENTS_BAD);
+		return CKR_ARGUMENTS_BAD;
 
 	token = get_token(token_id);
 	if (!token)
-		return ckr2tee(CKR_SLOT_ID_INVALID);
+		return CKR_SLOT_ID_INVALID;
 
 	if (token->flags & CKF_SO_PIN_LOCKED) {
 		IMSG("Token SO PIN is locked");
-		return ckr2tee(CKR_PIN_LOCKED);
+		return CKR_PIN_LOCKED;
 	}
 
 	if (!LIST_EMPTY(&token->session_list)) {
 		IMSG("SO cannot log in, pending session(s)");
-		return ckr2tee(CKR_SESSION_EXISTS);
+		return CKR_SESSION_EXISTS;
 	}
 
 	if (!token->so_pin) {
 		uint8_t *so_pin = TEE_Malloc(pin_size, 0);
 
 		if (!so_pin)
-			return ckr2tee(CKR_DEVICE_MEMORY);
+			return CKR_DEVICE_MEMORY;
 
 		TEE_MemMove(so_pin, pin, pin_size);
 		token->so_pin_size = pin_size;
@@ -269,7 +269,7 @@ TEE_Result ck_token_initialize(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out)
 			if (token->so_pin_count == 7)
 				token->flags |= CKF_SO_PIN_LOCKED;
 
-			return ckr2tee(CKR_PIN_INCORRECT);
+			return CKR_PIN_INCORRECT;
 		} else {
 			token->flags &= (CKF_SO_PIN_COUNT_LOW |
 					 CKF_SO_PIN_FINAL_TRY);
@@ -283,30 +283,31 @@ TEE_Result ck_token_initialize(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out)
 	label[32] = '\0';
 	IMSG("Token \"%s\" is happy to be initilialized", label);
 
-	return ckr2tee(CKR_OK);
+	return CKR_OK;
 }
 
-TEE_Result ck_slot_list(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out)
+CK_RV ck_slot_list(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out)
 {
 	const size_t out_size = sizeof(uint32_t) * TOKEN_COUNT;
 	uint32_t *id;
 	unsigned int n;
 
 	if (ctrl || in || !out)
-		return ckr2tee(CKR_ARGUMENTS_BAD);
+		return CKR_ARGUMENTS_BAD;
 
 	if (out->memref.size < out_size) {
 		out->memref.size = out_size;
-		return ckr2tee(CKR_BUFFER_TOO_SMALL);
+		return CKR_BUFFER_TOO_SMALL;
 	}
 
 	for (id = out->memref.buffer, n = 0; n < TOKEN_COUNT; n++, id++)
 		*id = (uint32_t)n;
 
-	return ckr2tee(CKR_OK);
+	out->memref.size = out_size;
+	return CKR_OK;
 }
 
-TEE_Result ck_slot_info(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out)
+CK_RV ck_slot_info(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out)
 {
 	const char desc[] = SKS_CRYPTOKI_SLOT_DESCRIPTION;
 	const char manuf[] = SKS_CRYPTOKI_SLOT_MANUFACTURER;
@@ -317,21 +318,21 @@ TEE_Result ck_slot_info(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out)
 	struct ck_token *token;
 
 	if (!ctrl || in || !out)
-		return ckr2tee(CKR_ARGUMENTS_BAD);
+		return CKR_ARGUMENTS_BAD;
 
 	if (ctrl->memref.size != sizeof(token_id))
-		return ckr2tee(CKR_ARGUMENTS_BAD);
+		return CKR_ARGUMENTS_BAD;
 
 	TEE_MemMove(&token_id, ctrl->memref.buffer, sizeof(token_id));
 
 	if (out->memref.size < sizeof(struct sks_ck_slot_info)) {
 		out->memref.size = sizeof(struct sks_ck_slot_info);
-		return ckr2tee(CKR_BUFFER_TOO_SMALL);
+		return CKR_BUFFER_TOO_SMALL;
 	}
 
 	token = get_token(token_id);
 	if (!token)
-		return ckr2tee(CKR_ARGUMENTS_BAD);
+		return CKR_SLOT_ID_INVALID;
 
 	/* TODO: prevent crash on unaligned buffers */
 	info = (void *)out->memref.buffer;
@@ -350,10 +351,10 @@ TEE_Result ck_slot_info(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out)
 
 	out->memref.size = sizeof(struct sks_ck_slot_info);
 
-	return ckr2tee(CKR_OK);
+	return CKR_OK;
 }
 
-TEE_Result ck_token_info(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out)
+CK_RV ck_token_info(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out)
 {
 	const char manuf[] = SKS_CRYPTOKI_TOKEN_MANUFACTURER;
 	const char model[] = SKS_CRYPTOKI_TOKEN_MODEL;
@@ -364,21 +365,21 @@ TEE_Result ck_token_info(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out)
 	struct ck_token *token;
 
 	if (!ctrl || in || !out)
-		return TEE_ERROR_BAD_PARAMETERS;
+		return CKR_ARGUMENTS_BAD;
 
 	if (ctrl->memref.size != sizeof(token_id))
-		return TEE_ERROR_BAD_PARAMETERS;
+		return CKR_ARGUMENTS_BAD;
 
 	TEE_MemMove(&token_id, ctrl->memref.buffer, sizeof(token_id));
 
 	if (out->memref.size < sizeof(struct sks_ck_token_info)) {
 		out->memref.size = sizeof(struct sks_ck_token_info);
-		return TEE_ERROR_SHORT_BUFFER;
+		return CKR_BUFFER_TOO_SMALL;
 	}
 
 	token = get_token(token_id);
 	if (!token)
-		return TEE_ERROR_BAD_PARAMETERS;
+		return CKR_SLOT_ID_INVALID;
 
 	TEE_MemFill(&info, 0, sizeof(info));
 
@@ -411,11 +412,11 @@ TEE_Result ck_token_info(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out)
 	/* Return to caller with data */
 	TEE_MemMove(out->memref.buffer, &info, sizeof(info));
 
-	return TEE_SUCCESS;
+	return CKR_OK;
 }
 
 /* TODO: this is a temporary implementation */
-TEE_Result ck_token_mecha_ids(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out)
+CK_RV ck_token_mecha_ids(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out)
 {
 	// TODO: get the list of supported mechanism
 	const CK_MECHANISM_TYPE mecha_list[] = {
@@ -427,31 +428,31 @@ TEE_Result ck_token_mecha_ids(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out)
 	struct ck_token *token;
 
 	if (!ctrl || in || !out)
-		return TEE_ERROR_BAD_PARAMETERS;
+		return CKR_ARGUMENTS_BAD;
 
 	if (out->memref.size < sizeof(mecha_list)) {
 		out->memref.size = sizeof(mecha_list);
-		return TEE_ERROR_SHORT_BUFFER;
+		return CKR_BUFFER_TOO_SMALL;
 	}
 
 	if (ctrl->memref.size != sizeof(token_id))
-		return TEE_ERROR_BAD_PARAMETERS;
+		return CKR_ARGUMENTS_BAD;
 
 	TEE_MemMove(&token_id, ctrl->memref.buffer, sizeof(token_id));
 
 	token = get_token(token_id);
 	if (!token)
-		return TEE_ERROR_BAD_PARAMETERS;
+		return CKR_SLOT_ID_INVALID;
 
 	/* TODO: can a token support a restricted mechanism list */
 	out->memref.size = sizeof(mecha_list);
 	TEE_MemMove(out->memref.buffer, mecha_list, sizeof(mecha_list));
 
-	return TEE_SUCCESS;
+	return CKR_OK;
 }
 
 /* TODO: this is a temporary implementation */
-TEE_Result ck_token_mecha_info(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out)
+CK_RV ck_token_mecha_info(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out)
 {
 	CK_MECHANISM_INFO info;
 	CK_MECHANISM_TYPE type;
@@ -460,15 +461,15 @@ TEE_Result ck_token_mecha_info(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out)
 	char *ctrl_ptr;
 
 	if (!ctrl || in || !out)
-		return TEE_ERROR_BAD_PARAMETERS;
+		return CKR_ARGUMENTS_BAD;
 
 	if (out->memref.size < sizeof(info)) {
 		out->memref.size = sizeof(info);
-		return TEE_ERROR_SHORT_BUFFER;
+		return CKR_BUFFER_TOO_SMALL;
 	}
 
 	if (ctrl->memref.size != 2 * sizeof(uint32_t))
-		return TEE_ERROR_BAD_PARAMETERS;
+		return CKR_ARGUMENTS_BAD;
 
 	ctrl_ptr = ctrl->memref.buffer;
 	TEE_MemMove(&token_id, ctrl_ptr, sizeof(uint32_t));
@@ -477,7 +478,7 @@ TEE_Result ck_token_mecha_info(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out)
 
 	token = get_token(token_id);
 	if (!token)
-		return TEE_ERROR_BAD_PARAMETERS;
+		return CKR_SLOT_ID_INVALID;
 
 	TEE_MemFill(&info, 0, sizeof(info));
 
@@ -513,7 +514,7 @@ TEE_Result ck_token_mecha_info(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out)
 	out->memref.size = sizeof(info);
 	TEE_MemMove(out->memref.buffer, &info, sizeof(info));
 
-	return TEE_SUCCESS;
+	return CKR_OK;
 }
 
 /* ctrl=[slot-id], in=unused, out=[session-handle] */

@@ -141,10 +141,10 @@ struct object_list *pkcs11_get_session_objects(struct pkcs11_session *session)
 /* Handler for most PKCS#11 API functions */
 CK_RV ck_slot_list(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out);
 CK_RV ck_slot_info(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out);
-TEE_Result ck_token_info(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out);
+CK_RV ck_token_info(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out);
 
-TEE_Result ck_token_mecha_ids(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out);
-TEE_Result ck_token_mecha_info(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out);
+CK_RV ck_token_mecha_ids(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out);
+CK_RV ck_token_mecha_info(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out);
 
 CK_RV ck_token_initialize(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out);
 TEE_Result ck_token_init_pin(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out);

@@ -9,6 +9,7 @@
 #include <tee_internal_api_extensions.h>
 
 #include "ck_debug.h"
+#include "ck_helpers.h"
 #include "handle.h"
 #include "object.h"
 #include "pkcs11_token.h"
@@ -53,18 +54,30 @@ void TA_CloseSessionEntryPoint(void *session)
 }
 
 /*
- * The session handle here may be useless. Drop it...
+ * Entry point for SKS TA commands
+ *
+ * ABI: param#0 is ctrl buffer: serialazed arguments
+ *	param#1 is the input data buffer
+ *	param#2 is the output data buffer (also used to generated handles)
+ *	param#3 is not used
+ *
+ * Param#0 ctrl, if defined as an in/out buffer, is used to send back to
+ * the client a Cryptoki status ID that superseeds the TEE result code which
+ * will be force to TEE_SUCCESS. Note that some Cryptoki error status are
+ * send straight through TEE result code. See ckr2tee_noerr().
  */
 TEE_Result TA_InvokeCommandEntryPoint(void *session, uint32_t cmd,
 				      uint32_t ptypes,
 				      TEE_Param params[TEE_NUM_PARAMS])
 {
+	CK_RV rv;
 	int teesess = (int)session;
 	TEE_Param *ctrl = NULL;
 	TEE_Param *in = NULL;
 	TEE_Param *out = NULL;
 
-	if (TEE_PARAM_TYPE_GET(ptypes, 0) == TEE_PARAM_TYPE_MEMREF_INPUT)
+	if (TEE_PARAM_TYPE_GET(ptypes, 0) == TEE_PARAM_TYPE_MEMREF_INPUT ||
+	    TEE_PARAM_TYPE_GET(ptypes, 0) == TEE_PARAM_TYPE_MEMREF_INOUT)
 		ctrl = &params[0];
 	else if (TEE_PARAM_TYPE_GET(ptypes, 0) != TEE_PARAM_TYPE_NONE)
 		goto bad_types;
@@ -93,18 +106,24 @@ TEE_Result TA_InvokeCommandEntryPoint(void *session, uint32_t cmd,
 	case SKS_CMD_CK_PING:
 		return TEE_SUCCESS;
 	case SKS_CMD_CK_SLOT_LIST:
-		return ck_slot_list(ctrl, in, out);
+		rv = ck_slot_list(ctrl, in, out);
+		goto bail_ck;
 	case SKS_CMD_CK_SLOT_INFO:
-		return ck_slot_info(ctrl, in, out);
+		rv = ck_slot_info(ctrl, in, out);
+		goto bail_ck;
 	case SKS_CMD_CK_TOKEN_INFO:
-		return ck_token_info(ctrl, in, out);
+		rv = ck_token_info(ctrl, in, out);
+		goto bail_ck;
 	case SKS_CMD_CK_INIT_TOKEN:
-		return ck_token_initialize(ctrl, in, out);
+		rv = ck_token_initialize(ctrl, in, out);
+		goto bail_ck;
 
 	case SKS_CMD_CK_MECHANISM_IDS:
-		return ck_token_mecha_ids(ctrl, in, out);
+		rv = ck_token_mecha_ids(ctrl, in, out);
+		goto bail_ck;
 	case SKS_CMD_CK_MECHANISM_INFO:
-		return ck_token_mecha_info(ctrl, in, out);
+		rv = ck_token_mecha_info(ctrl, in, out);
+		goto bail_ck;
 
 	case SKS_CMD_CK_OPEN_RO_SESSION:
 		return ck_token_ro_session(teesess, ctrl, in, out);
@@ -137,6 +156,18 @@ TEE_Result TA_InvokeCommandEntryPoint(void *session, uint32_t cmd,
 		EMSG("Command ID 0x%x is not supported", cmd);
 		return TEE_ERROR_NOT_SUPPORTED;
 	}
+
+bail_ck:
+	if (TEE_PARAM_TYPE_GET(ptypes, 0) == TEE_PARAM_TYPE_MEMREF_INOUT &&
+	    ctrl->memref.size >= sizeof(uint32_t)) {
+
+		TEE_MemMove(ctrl->memref.buffer, &rv, sizeof(uint32_t));
+		ctrl->memref.size = sizeof(uint32_t);
+
+		return ckr2tee_noerr(rv);
+	}
+
+	return ckr2tee_error(rv);
 
 bad_types:
 	DMSG("Bad parameter types used at SKS TA entry:");
