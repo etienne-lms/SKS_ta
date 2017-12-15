@@ -84,6 +84,7 @@ static int __pkcs11_token_init(unsigned int id)
 	//	CKF_SO_PIN_TO_BE_CHANGED
 
 	token->login_state = PKCS11_TOKEN_STATE_PUBLIC_SESSIONS;
+	token->session_state = PKCS11_TOKEN_STATE_SESSION_NONE;
 
 	return 0;
 }
@@ -104,7 +105,8 @@ bool pkcs11_session_is_read_write(struct pkcs11_session *session)
 	if (!session->readwrite)
 		return false;
 
-	if (session->token->session_state == PKCS11_TOKEN_STATE_READ_ONLY)
+	if (session->token->session_state ==
+	    PKCS11_TOKEN_STATE_SESSION_READ_ONLY)
 		return false;
 
 	switch (session->token->login_state) {
@@ -562,11 +564,10 @@ static CK_RV ck_token_session(int teesess, TEE_Param *ctrl,
 	if (!token)
 		return CKR_SLOT_ID_INVALID;
 
-	if (!ro && token->session_state == PKCS11_TOKEN_STATE_READ_ONLY) {
-		// TODO: if token is read-only, refuse RW sessions
-		// See CKR_SESSION_READ_WRITE_SO_EXISTS
+	if (ro &&
+	    token->login_state == PKCS11_TOKEN_STATE_SECURITY_OFFICER &&
+	    token->session_state == PKCS11_TOKEN_STATE_SESSION_READ_WRITE)
 		return CKR_SESSION_READ_WRITE_SO_EXISTS;
-	}
 
 	session = TEE_Malloc(sizeof(*session), 0);
 	if (!session)
@@ -577,7 +578,11 @@ static CK_RV ck_token_session(int teesess, TEE_Param *ctrl,
 	session->processing = PKCS11_SESSION_READY;
 	session->tee_op_handle = TEE_HANDLE_NULL;
 	LIST_INIT(&session->object_list);
+	session->readwrite = !ro;
 	session->token = token;
+
+	if (ro)
+	    token->session_state = PKCS11_TOKEN_STATE_SESSION_READ_ONLY;
 
 	LIST_INSERT_HEAD(&token->session_list, session, link);
 
@@ -614,6 +619,29 @@ static void close_ck_session(struct pkcs11_session *session)
 
 	LIST_REMOVE(session, link);
 
+	/* Closing last read-only session => token switch back to read/write */
+	if (!session->readwrite) {
+		struct pkcs11_session *sess;
+		bool last_ro = true;
+		bool last = true;
+
+		LIST_FOREACH(sess, &session->token->session_list, link) {
+			last = false;
+
+			if (sess->readwrite)
+				continue;
+
+			last_ro = false;
+		}
+
+		if (last)
+		    session->token->session_state =
+					PKCS11_TOKEN_STATE_SESSION_NONE;
+		else if (last_ro)
+		    session->token->session_state =
+					PKCS11_TOKEN_STATE_SESSION_READ_WRITE;
+	}
+
 	if (LIST_EMPTY(&session->token->session_list)) {
 		// TODO: if last session closed, token moves to Public state
 	}
@@ -633,10 +661,7 @@ CK_RV ck_token_close_session(int teesess, TEE_Param *ctrl,
 
 	TEE_MemMove(&handle, ctrl->memref.buffer, sizeof(uint32_t));
 	session = get_pkcs_session(handle);
-	if (!session)
-		return CKR_SESSION_HANDLE_INVALID;
-
-	if (session->tee_session != teesess)
+	if (!session || session->tee_session != teesess)
 		return CKR_SESSION_HANDLE_INVALID;
 
 	close_ck_session(session);

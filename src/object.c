@@ -214,6 +214,11 @@ static CK_RV create_object(void *session, void *head, uint32_t *hdl)
 		TEE_Panic(0);
 	}
 
+	if (is_persistent && !session_allows_persistent_object(session)) {
+		rv = CKR_SESSION_READ_ONLY;
+		goto bail;
+	}
+
 	/* Non raw data object get their data content store aside attrbiutes */
 	switch (serial_get_class(head)) {
 	case CKO_DATA:
@@ -253,9 +258,7 @@ static CK_RV create_object(void *session, void *head, uint32_t *hdl)
 		TEE_Panic(0);
 	}
 
-	if (is_persistent &&
-	    obj->key_handle != TEE_HANDLE_NULL &&
-	    session_allows_persistent_object(session)) {
+	if (is_persistent && obj->key_handle != TEE_HANDLE_NULL) {
 		TEE_ObjectHandle handle = obj->key_handle;
 
 		/*

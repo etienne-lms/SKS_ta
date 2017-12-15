@@ -43,8 +43,9 @@ enum pkcs11_token_login_state {
 };
 
 enum pkcs11_token_session_state {
-	PKCS11_TOKEN_STATE_READ_WRITE = 0,
-	PKCS11_TOKEN_STATE_READ_ONLY,
+	PKCS11_TOKEN_STATE_SESSION_NONE = 0,	/* token default state */
+	PKCS11_TOKEN_STATE_SESSION_READ_WRITE,
+	PKCS11_TOKEN_STATE_SESSION_READ_ONLY,
 };
 
 struct pkcs11_token;
