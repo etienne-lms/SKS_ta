@@ -160,5 +160,16 @@ void serial_get_attributes_ptr(void *ref, uint32_t attribute,
 CK_RV serial_get_attribute(void *ref, uint32_t attribute,
 			   void *attr, size_t *attr_size);
 
+/*
+ * serial_remove_attribute - Remove an attribute from a serialized object
+ *
+ * @ref - object attribute reference where the attribute shall be removed
+ * @attribute - ID of the attribute to remove
+ *
+ * Return CKR_OK on success, CKR_FUNCTION_FAILED on error.
+ */
+CK_RV serial_remove_attribute(void *ref, uint32_t attribute);
+
+
 #endif /*__SERIALIZER_H*/
 

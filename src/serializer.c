@@ -196,6 +196,91 @@ CK_RV serial_get_attribute(void *ref, uint32_t attribute,
 	return CKR_OK;
 }
 
+/*
+ * Removing an attribute from a serialized object
+ */
+
+static bool attribute_is_in_head(struct serializer *ref, uint32_t attribute)
+{
+	if (ref->version != SKS_ABI_VERSION_CK_2_40)
+		TEE_Panic(0);
+
+	switch (SKS_ABI_HEAD(ref->config)) {
+	case SKS_ABI_CONFIG_RAWHEAD:
+		return false;
+	case SKS_ABI_CONFIG_GENHEAD:
+		return (attribute == CKA_CLASS || sks_attr_is_type(attribute));
+	case SKS_ABI_CONFIG_KEYHEAD:
+		return (attribute == CKA_CLASS || sks_attr_is_type(attribute) ||
+			sks_attr2boolprop_shift(attribute) >= 0);
+	default:
+		TEE_Panic(0);
+	}
+
+	return false;
+}
+
+CK_RV serial_remove_attribute(void *ref, uint32_t attribute)
+{
+	CK_RV rv;
+	struct serializer *obj;
+	char *cur = ref;
+	char *end;
+	size_t next;
+	int found = 0;
+
+	rv = serial_init_object(&obj, ref);
+	if (rv)
+		return rv;
+
+	/* Can't remove an attribute that is defined in the head */
+	if (attribute_is_in_head(obj, attribute)) {
+		rv = CKR_FUNCTION_FAILED;
+		goto bail;
+	}
+
+	/* Let's find the target attribute */
+	cur = obj->buffer + sizeof_serial_object_head(obj);
+	end = obj->buffer + obj->size;
+	for (; cur < end; cur += next) {
+		struct sks_ref sks_ref;
+
+		TEE_MemMove(&sks_ref, cur, sizeof(sks_ref));
+		next = sizeof(sks_ref) + sks_ref.size;
+
+		if (sks_ref.id != attribute)
+			continue;
+
+		if (found) {
+			EMSG("Attribute found twice");
+			TEE_Panic(0);
+		}
+		found = 1;
+
+		TEE_MemMove(cur, cur + next, end - (cur + next));
+
+		obj->item_count--;
+		obj->size -= sks_ref.size;
+		end -= next;
+		next = 0;
+	}
+
+	/* sanity */
+	if (cur != end) {
+		EMSG("unexpected none alignement\n");
+		TEE_Panic(0);
+	}
+
+	if (!found)
+		rv = CKR_FUNCTION_FAILED;
+	else
+		rv = serial_finalize_object(obj);
+
+bail:
+	TEE_Free(obj);
+
+	return rv;
+}
 
 /* Check attribute value matches provided blob */
 bool serial_attribute_value_matches(char *head, uint32_t attr,
