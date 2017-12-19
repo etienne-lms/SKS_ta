@@ -97,11 +97,7 @@ uint32_t serial_get_type(void *ref);
  * @attr_ptr - output pointer to attribute data when found.
  * @attr_size - output byte size of the attribute data when found.
  *
- * If the attribute is found but non null provided attribut size does not
- * match the found attribute, the function returns CKR_BUFFER_TOO_SMALL. This
- * applies to both too small and too large sizes.
- *
- * Otherwise, return CKR_OK if attribute is found, else return non CKR_OK.
+ * Return CKR_OK if attribute is found, else return non CKR_OK.
  *
  * If attr_ptr is not null and attribute is found, attr_ptr will store the
  * attribute data location in memory.
@@ -113,7 +109,7 @@ CK_RV serial_get_attribute_ptr(void *ref, uint32_t attribute,
 				void **attr_ptr, size_t *attr_size);
 
 /*
- * serial_get_attribute_ptr - Get count locations of target attribute
+ * serial_get_attributes_ptr - Get count locations of target attribute
  *
  * @ref - object attribute reference where the attribute is searched in
  * @attribute - ID of the attribute to seach
