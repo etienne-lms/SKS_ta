@@ -94,7 +94,7 @@ CK_RV set_pkcs11_imported_symkey_attributes(void **out, void *ref)
 	CK_ULONG type = serial_get_type(ref);
 
 	/* TODO: move to keyhead serial object: easier boolprop handling */
-	reset_serial_object_rawhead(&obj);
+	serializer_reset_to_rawhead(&obj);
 
 	/* Class and type are mandatory */
 	rv = serialize_sks_ref(&obj, CKA_CLASS, &class, sizeof(class));
@@ -187,11 +187,11 @@ CK_RV set_pkcs11_imported_symkey_attributes(void **out, void *ref)
 	if (rv == CKR_OK)
 		rv = serialize_sks_ref(&obj, CKA_VALUE, attr, size);
 
-	rv = serial_finalize_object(&obj);
+	rv = serializer_finalize(&obj);
 
 bail:
 	if (rv)
-		release_serial_object(&obj);
+		serializer_release(&obj);
 	else
 		*out = obj.buffer;
 
@@ -212,7 +212,7 @@ CK_RV set_pkcs11_data_object_attributes(void **out, void *ref)
 	uint32_t class =serial_get_class(ref);
 
 	/* TODO: move to keyhead serial object: easier boolprop handling */
-	reset_serial_object_rawhead(&obj);
+	serializer_reset_to_rawhead(&obj);
 
 	/* Class and type are mandatory */
 	rv = serialize_sks_ref(&obj, CKA_CLASS, &class, sizeof(class));
@@ -256,11 +256,11 @@ CK_RV set_pkcs11_data_object_attributes(void **out, void *ref)
 			goto bail;
 	}
 
-	rv = serial_finalize_object(&obj);
+	rv = serializer_finalize(&obj);
 
 bail:
 	if (rv)
-		release_serial_object(&obj);
+		serializer_release(&obj);
 	else
 		*out = obj.buffer;
 

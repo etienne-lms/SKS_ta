@@ -248,7 +248,7 @@ static CK_RV sanitize_attributes_from_head(struct serializer *dst, void *src)
 	char *end;
 	size_t next;
 
-	rv = serial_init_object(&obj, src);
+	rv = serializer_init_from_head(&obj, src);
 	if (rv)
 		return rv;
 
@@ -294,7 +294,7 @@ static CK_RV sanitize_attributes_from_head(struct serializer *dst, void *src)
 		goto bail;
 	}
 
-	rv = serial_finalize_object(dst);
+	rv = serializer_finalize(dst);
 
 bail:
 	TEE_Free(obj);
@@ -311,15 +311,15 @@ CK_RV serial_sanitize_attributes(void **head, void *ref, size_t ref_size)
 	if (ref_size < serial_get_size(ref))
 		return CKR_FUNCTION_FAILED; // FIXME: invalid arguments
 
-	rv = reset_serial_object_rawhead(&dst_obj);
+	rv = serializer_reset_to_rawhead(&dst_obj);
 	if (rv)
 		return rv;
 
 	rv = sanitize_attributes_from_head(&dst_obj, ref);
-	if (rv == CKR_OK)
-		*head = dst_obj.buffer;
+	if (rv)
+		serializer_release(&dst_obj);
 	else
-		release_serial_object(&dst_obj);
+		*head = dst_obj.buffer;
 
 	return rv;
 }

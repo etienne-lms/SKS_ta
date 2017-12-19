@@ -229,7 +229,7 @@ CK_RV serial_remove_attribute(void *ref, uint32_t attribute)
 	size_t next;
 	int found = 0;
 
-	rv = serial_init_object(&obj, ref);
+	rv = serializer_init_from_head(&obj, ref);
 	if (rv)
 		return rv;
 
@@ -274,7 +274,7 @@ CK_RV serial_remove_attribute(void *ref, uint32_t attribute)
 	if (!found)
 		rv = CKR_FUNCTION_FAILED;
 	else
-		rv = serial_finalize_object(obj);
+		rv = serializer_finalize(obj);
 
 bail:
 	TEE_Free(obj);
@@ -344,18 +344,18 @@ char *get_serial_object_buffer(struct serializer *obj)
  *	serial_object_init()
  *	serial_(raw|...)head_init()
  */
-void reset_serial_object(struct serializer *obj)
+void serializer_reset(struct serializer *obj)
 {
 	TEE_MemFill(obj, 0, sizeof(*obj));
 	obj->class = SKS_UNDEFINED_ID;
 	obj->type = SKS_UNDEFINED_ID;
 }
 
-CK_RV reset_serial_object_rawhead(struct serializer *obj)
+CK_RV serializer_reset_to_rawhead(struct serializer *obj)
 {
 	struct sks_obj_rawhead head;
 
-	reset_serial_object(obj);
+	serializer_reset(obj);
 
 	obj->version = SKS_ABI_VERSION_CK_2_40;
 	obj->config = SKS_ABI_CONFIG_RAWHEAD;
@@ -367,11 +367,11 @@ CK_RV reset_serial_object_rawhead(struct serializer *obj)
 	return serialize_buffer(obj, &head, sizeof(head));
 }
 
-CK_RV reset_serial_object_genhead(struct serializer *obj)
+CK_RV serializer_reset_to_genhead(struct serializer *obj)
 {
 	struct sks_obj_genhead head;
 
-	reset_serial_object(obj);
+	serializer_reset(obj);
 
 	obj->version = SKS_ABI_VERSION_CK_2_40;
 	obj->config = SKS_ABI_CONFIG_GENHEAD;
@@ -385,11 +385,11 @@ CK_RV reset_serial_object_genhead(struct serializer *obj)
 	return serialize_buffer(obj, &head, sizeof(head));
 }
 
-CK_RV reset_serial_object_keyhead(struct serializer *obj)
+CK_RV serializer_reset_to_keyhead(struct serializer *obj)
 {
 	struct sks_obj_keyhead head;
 
-	reset_serial_object(obj);
+	serializer_reset(obj);
 
 	obj->version = SKS_ABI_VERSION_CK_2_40;
 	obj->config = SKS_ABI_CONFIG_KEYHEAD;
@@ -405,7 +405,7 @@ CK_RV reset_serial_object_keyhead(struct serializer *obj)
 	return serialize_buffer(obj, &head, sizeof(head));
 }
 
-CK_RV serial_init_object(struct serializer **out, void *ref)
+CK_RV serializer_init_from_head(struct serializer **out, void *ref)
 {
 	struct serializer *obj;
 	union {
@@ -419,7 +419,7 @@ CK_RV serial_init_object(struct serializer **out, void *ref)
 	if (!obj)
 		return CKR_DEVICE_MEMORY;
 
-	reset_serial_object(obj);
+	serializer_reset(obj);
 
 	TEE_MemMove(&head.raw, ref, sizeof(head.raw));
 
@@ -457,7 +457,7 @@ error:
 	return CKR_FUNCTION_FAILED;
 }
 
-CK_RV serial_finalize_object(struct serializer *obj)
+CK_RV serializer_finalize(struct serializer *obj)
 {
 	union {
 		struct sks_obj_rawhead raw;
@@ -506,7 +506,7 @@ CK_RV serial_finalize_object(struct serializer *obj)
 	return CKR_OK;
 }
 
-void release_serial_object(struct serializer *obj)
+void serializer_release(struct serializer *obj)
 {
 	TEE_Free(obj->buffer);
 	obj->buffer = NULL;

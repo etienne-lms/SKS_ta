@@ -37,14 +37,14 @@ size_t get_serial_object_size(struct serializer *obj);
 /* Return the location of the serial object */
 char *get_serial_object_buffer(struct serializer *obj);
 
-/* Init/finalize/release a serial object */
-void reset_serial_object(struct serializer *obj);
-CK_RV reset_serial_object_rawhead(struct serializer *obj);
-CK_RV reset_serial_object_genhead(struct serializer *obj);
-CK_RV reset_serial_object_keyhead(struct serializer *obj);
-CK_RV serial_init_object(struct serializer **out, void *ref);
-CK_RV serial_finalize_object(struct serializer *obj);
-void release_serial_object(struct serializer *obj);
+/* Init/finalize/release a serializer object */
+void serializer_reset(struct serializer *obj);
+CK_RV serializer_reset_to_rawhead(struct serializer *obj);
+CK_RV serializer_reset_to_genhead(struct serializer *obj);
+CK_RV serializer_reset_to_keyhead(struct serializer *obj);
+CK_RV serializer_init_from_head(struct serializer **out, void *ref);
+CK_RV serializer_finalize(struct serializer *obj);
+void serializer_release(struct serializer *obj);
 
 /**
  * serialize - serialize input data in buffer
