@@ -229,57 +229,6 @@ static CK_RV sanitize_indirect_attr(struct serializer *dst,
 	return rv;
 }
 
-/* Warning: one cannot append dat to such initiated serial object */
-static CK_RV init_object_from_head(struct serializer *obj, void *ref)
-
-{
-	union {
-		struct sks_obj_rawhead raw;
-		struct sks_obj_genhead gen;
-		struct sks_obj_keyhead key;
-	} head;
-
-	reset_serial_object(obj);
-
-	TEE_MemMove(&head.raw, ref, sizeof(head.raw));
-
-	switch (head.raw.version) {
-	case SKS_ABI_VERSION_CK_2_40:
-		switch (SKS_ABI_HEAD(head.raw.configuration)) {
-		case SKS_ABI_CONFIG_RAWHEAD:
-			obj->size = sizeof(head.raw) + head.raw.blobs_size;
-			break;
-		case SKS_ABI_CONFIG_GENHEAD:
-			TEE_MemMove(&head.gen, ref, sizeof(head.gen));
-			obj->size = sizeof(head.gen) + head.gen.blobs_size;
-			obj->class = head.gen.class;
-			obj->type = head.gen.type;
-			break;
-		case SKS_ABI_CONFIG_KEYHEAD:
-			TEE_MemMove(&head.key, ref, sizeof(head.key));
-			obj->size = sizeof(head.key) + head.key.blobs_size;
-			obj->class = head.key.class;
-			obj->type = head.key.type;
-			TEE_MemMove(obj->boolprop, &head.key.boolpropl,
-				    sizeof(uint32_t));
-			TEE_MemMove(obj->boolprop + 1, &head.key.boolproph,
-				    sizeof(uint32_t));
-			break;
-		default:
-			return CKR_FUNCTION_FAILED;
-		}
-		break;
-	default:
-		return CKR_FUNCTION_FAILED;
-	}
-
-	obj->buffer = ref;
-	obj->version = head.raw.version;
-	obj->config = head.raw.configuration;
-
-	return CKR_OK;
-}
-
 /**
  * serial_raw2gen_attributes - create a genhead serial object from a sks blob.
  *
@@ -293,26 +242,26 @@ static CK_RV init_object_from_head(struct serializer *obj, void *ref)
  */
 static CK_RV sanitize_attributes_from_head(struct serializer *dst, void *src)
 {
-	struct serializer ref_obj;
+	struct serializer *obj;
 	CK_RV rv;
 	char *cur;
 	char *end;
 	size_t next;
 
-	rv = init_object_from_head(&ref_obj, src);
+	rv = serial_init_object(&obj, src);
 	if (rv)
 		return rv;
 
-	rv = sanitize_class_and_type(dst, &ref_obj);
+	rv = sanitize_class_and_type(dst, obj);
 	if (rv)
-		return rv;
+		goto bail;
 
-	rv = sanitize_boolprops(dst, &ref_obj);
+	rv = sanitize_boolprops(dst, obj);
 	if (rv)
-		return rv;
+		goto bail;
 
-	cur = ref_obj.buffer + sizeof_serial_object_head(&ref_obj);
-	end = ref_obj.buffer + ref_obj.size;
+	cur = obj->buffer + sizeof_serial_object_head(obj);
+	end = obj->buffer + obj->size;
 	for (; cur < end; cur += next) {
 		struct sks_ref sks_ref;
 
@@ -324,16 +273,16 @@ static CK_RV sanitize_attributes_from_head(struct serializer *dst, void *src)
 		    sks_attr2boolprop_shift(sks_ref.id) >= 0)
 			continue;
 
-		rv = sanitize_indirect_attr(dst, &ref_obj, &sks_ref, cur);
+		rv = sanitize_indirect_attr(dst, obj, &sks_ref, cur);
 		if (rv == CKR_OK)
 			continue;
 		if (rv != CKR_NO_EVENT)
-			return rv;
+			goto bail;
 
 		/* It is a standard attribute reference, serializa it */
 		rv = serialize_buffer(dst, cur, next);
 		if (rv)
-			return rv;
+			goto bail;
 
 		dst->item_count++;
 	}
@@ -341,10 +290,16 @@ static CK_RV sanitize_attributes_from_head(struct serializer *dst, void *src)
 	/* sanity */
 	if (cur != end) {
 		EMSG("unexpected none alignement\n");
-		return CKR_FUNCTION_FAILED;
+		rv = CKR_FUNCTION_FAILED;
+		goto bail;
 	}
 
-	return serial_finalize_object(dst);
+	rv = serial_finalize_object(dst);
+
+bail:
+	TEE_Free(obj);
+
+	return rv;
 }
 
 /* Sanitize ref into head (this duplicates the serial object in memory) */

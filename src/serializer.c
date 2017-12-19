@@ -320,6 +320,58 @@ CK_RV reset_serial_object_keyhead(struct serializer *obj)
 	return serialize_buffer(obj, &head, sizeof(head));
 }
 
+CK_RV serial_init_object(struct serializer **out, void *ref)
+{
+	struct serializer *obj;
+	union {
+		struct sks_obj_rawhead raw;
+		struct sks_obj_genhead gen;
+		struct sks_obj_keyhead key;
+	} head;
+
+
+	obj = TEE_Malloc(sizeof(*obj), 0);
+	if (!obj)
+		return CKR_DEVICE_MEMORY;
+
+	reset_serial_object(obj);
+
+	TEE_MemMove(&head.raw, ref, sizeof(head.raw));
+
+	obj->version = head.raw.version;
+	obj->config = head.raw.configuration;
+	obj->buffer = ref;
+
+	if (obj->version != SKS_ABI_VERSION_CK_2_40)
+		goto error;
+
+	switch (SKS_ABI_HEAD(obj->config)) {
+	case SKS_ABI_CONFIG_RAWHEAD:
+		obj->size = sizeof(head.raw) + head.raw.blobs_size;
+		obj->item_count = head.raw.blobs_count;
+		break;
+	case SKS_ABI_CONFIG_GENHEAD:
+		TEE_MemMove(&head.gen, ref, sizeof(head.gen));
+		obj->size = sizeof(head.gen) + head.gen.blobs_size;
+		obj->item_count = head.gen.blobs_count;
+		break;
+	case SKS_ABI_CONFIG_KEYHEAD:
+		TEE_MemMove(&head.key, ref, sizeof(head.key));
+		obj->size = sizeof(head.key) + head.key.blobs_size;
+		obj->item_count = head.key.blobs_count;
+		break;
+	default:
+		goto error;
+	}
+
+	*out = obj;
+	return CKR_OK;
+
+error:
+	TEE_Free(obj);
+	return CKR_FUNCTION_FAILED;
+}
+
 CK_RV serial_finalize_object(struct serializer *obj)
 {
 	union {
