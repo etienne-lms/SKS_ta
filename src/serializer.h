@@ -47,18 +47,14 @@ CK_RV serializer_finalize(struct serializer *obj);
 void serializer_release(struct serializer *obj);
 
 /**
- * serialize - serialize input data in buffer
- *
- * Serialize data in provided buffer.
- * Insure 64byte alignement of appended data in the buffer.
+ * serialize - Append data into a serialized buffer
  */
 CK_RV serialize(char **bstart, size_t *blen, void *data, size_t len);
-/* Append data to a serial object */
 CK_RV serialize_32b(struct serializer *obj, uint32_t data);
 CK_RV serialize_buffer(struct serializer *obj, void *data, size_t size);
 CK_RV serialize_ck_ulong(struct serializer *obj, CK_ULONG data);
-CK_RV serialize_sks_ref(struct serializer *obj,
-			CK_ATTRIBUTE_TYPE id, void *data, size_t size);
+CK_RV serialize_sks_ref(struct serializer *obj,	CK_ATTRIBUTE_TYPE id,
+			void *data, size_t size);
 
 /* Check attribute value matches provided blob */
 bool serial_attribute_value_matches(char *head, uint32_t attr,
@@ -69,11 +65,6 @@ bool serial_boolean_attribute_matches(char *head, uint32_t attr, bool value);
 
 /* Check at least the attribute is defined in the serail object */
 bool serial_boolean_attribute_is_set(char *head, uint32_t attr);
-
-/*
- * Tools on already serialized object: input referenc is the serial object
- * head address.
- */
 
 /* Return the size of the serial blob head or 0 on error */
 size_t sizeof_serial_head(void *ref);
@@ -169,7 +160,6 @@ CK_RV serial_get_attribute(void *ref, uint32_t attribute,
  * Return CKR_OK on success, CKR_FUNCTION_FAILED on error.
  */
 CK_RV serial_remove_attribute(void *ref, uint32_t attribute);
-
 
 #endif /*__SERIALIZER_H*/
 
