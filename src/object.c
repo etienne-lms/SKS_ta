@@ -157,16 +157,17 @@ secret:
  * Create an AES key object
  *
  * @session - session onwing the object creation
- * @head - serialized attributes (incl. CKA_VALUE attribute storing the key)
+ * @head - serialized attributes (object data excluded)
+ * @data - object data
+ * @data_size - byte size of object data
  * @hld - object handle returned to hte client
  */
-static CK_RV create_object(void *session, void *head, uint32_t *hdl)
+CK_RV create_object(void *session, void *head, void *data, size_t data_size,
+		    uint32_t *hdl)
 {
 	CK_RV rv = CKR_OK;
 	TEE_Result res = TEE_SUCCESS;
 	struct sks_object *obj;
-	char *obj_data;
-	size_t obj_size = 0;
 	uint8_t is_persistent;
 	TEE_Attribute tee_key_attr;
 	int obj_handle;
@@ -193,20 +194,6 @@ static CK_RV create_object(void *session, void *head, uint32_t *hdl)
 	obj->attributes = head;
 	obj->ck_handle = (uint32_t)obj_handle;
 
-	/* Get the key data from the serial object */
-	rv = serial_get_attribute(head, CKA_VALUE, NULL, &obj_size);
-	if (rv != CKR_BUFFER_TOO_SMALL) {
-		rv = CKR_ATTRIBUTE_VALUE_INVALID;
-		goto bail;
-	}
-
-	rv = serial_get_attribute_ptr(head, CKA_VALUE,
-				      (void **)&obj_data, &obj_size);
-	if (rv) {
-		DMSG("No data attribute found");
-		TEE_Panic(0);
-	}
-
 	/* Session bound or persistent object? */
 	rv = serial_get_attribute(head, CKA_TOKEN, &is_persistent, NULL);
 	if (rv) {
@@ -223,6 +210,7 @@ static CK_RV create_object(void *session, void *head, uint32_t *hdl)
 	switch (serial_get_class(head)) {
 	case CKO_DATA:
 		break;
+
 	case CKO_SECRET_KEY:
 	case CKO_PUBLIC_KEY:
 	case CKO_PRIVATE_KEY:
@@ -232,7 +220,7 @@ static CK_RV create_object(void *session, void *head, uint32_t *hdl)
 			goto bail;
 		}
 
-		res = TEE_AllocateTransientObject(tee_obj_type, obj_size * 8,
+		res = TEE_AllocateTransientObject(tee_obj_type, data_size * 8,
 						  &obj->key_handle);
 		if (res) {
 			DMSG("TEE_AllocateTransientObject failed, %" PRIx32,
@@ -241,7 +229,7 @@ static CK_RV create_object(void *session, void *head, uint32_t *hdl)
 		}
 
 		TEE_InitRefAttribute(&tee_key_attr, tee_obj_attr,
-				     obj_data, obj_size);
+				     data, data_size);
 
 		res = TEE_PopulateTransientObject(obj->key_handle,
 						  &tee_key_attr, 1);
@@ -250,10 +238,8 @@ static CK_RV create_object(void *session, void *head, uint32_t *hdl)
 				res);
 			goto bail;
 		}
-
-		// TODO: remove the data attribute from the object
-		// since now the data are in a transcient object
 		break;
+
 	default:
 		TEE_Panic(0);
 	}
@@ -285,7 +271,7 @@ static CK_RV create_object(void *session, void *head, uint32_t *hdl)
 						 TEE_DATA_FLAG_ACCESS_WRITE_META |
 						 TEE_DATA_FLAG_OVERWRITE, /* TODO: don't overwrite! */
 						 handle,
-						 obj_data, obj_size,
+						 data, data_size,
 						 &obj->key_handle);
 
 		TEE_FreeTransientObject(handle);
@@ -319,6 +305,32 @@ bail:
 	return rv;
 }
 
+/* Split object attributes from aobject data (expected as attribute item) */
+static CK_RV extract_object_data(void *head, void **data, size_t *data_size)
+{
+	CK_RV rv;
+	size_t size = 0;
+
+	rv = serial_get_attribute(head, CKA_VALUE, NULL, &size);
+	if (rv != CKR_BUFFER_TOO_SMALL)
+		return CKR_ATTRIBUTE_VALUE_INVALID;
+
+	*data = TEE_Malloc(size, 0);
+	if (!*data)
+		return CKR_DEVICE_MEMORY;
+
+	*data_size = size;
+	rv = serial_get_attribute(head, CKA_VALUE, *data, data_size);
+	if (rv)
+		TEE_Panic(0);
+
+	rv = serial_remove_attribute(head, CKA_VALUE);
+	if (rv)
+		TEE_Free(*data);
+
+	return rv;
+}
+
 /*
  * Create an object from a clear content provided by client
  */
@@ -334,6 +346,8 @@ CK_RV entry_create_object(int teesess,
 	void *temp;
 	size_t temp_size;
 	void *obj_head = NULL;
+	void *data;
+	size_t data_size;
 
 	if (!ctrl || in || !out || out->memref.size < sizeof(uint32_t))
 		return CKR_ARGUMENTS_BAD;
@@ -358,7 +372,9 @@ CK_RV entry_create_object(int teesess,
 	if (rv)
 		goto bail;
 
-	/* Route to the object manager */
+	/*
+	 * Set the object attributes
+	 */
 	switch (serial_get_class(head)) {
 	case CKO_DATA:
 		rv = set_pkcs11_data_object_attributes(&obj_head, head);
@@ -374,7 +390,14 @@ CK_RV entry_create_object(int teesess,
 	if (rv)
 		goto bail;
 
-	rv = create_object(session, obj_head, &obj_handle);
+	/*
+	 * Seperate object data from object attribute and create the object
+	 */
+	rv = extract_object_data(obj_head, &data, &data_size);
+	if (rv)
+		goto bail;
+
+	rv = create_object(session, obj_head, data, data_size, &obj_handle);
 
 bail:
 	TEE_Free(temp);
@@ -382,6 +405,7 @@ bail:
 
 	if (rv) {
 		TEE_Free(obj_head);
+		TEE_Free(data);
 	} else {
 		TEE_MemMove(out->memref.buffer, &obj_handle, sizeof(uint32_t));
 		out->memref.size = sizeof(uint32_t);
