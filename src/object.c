@@ -179,7 +179,7 @@ CK_RV create_object(void *session, void *head, void *data, size_t data_size,
 	 * are expected consistent and reliable.
 	 */
 
-	obj = TEE_Malloc(sizeof(*obj), TEE_USER_MEM_HINT_NO_FILL_ZERO);
+	obj = TEE_Malloc(sizeof(*obj), TEE_MALLOC_FILL_ZERO);
 	if (!obj)
 		return CKR_DEVICE_MEMORY;
 
@@ -209,6 +209,10 @@ CK_RV create_object(void *session, void *head, void *data, size_t data_size,
 	/* Non raw data object get their data content store aside attrbiutes */
 	switch (serial_get_class(head)) {
 	case CKO_DATA:
+		if (!is_persistent) {
+			obj->data = data;
+			obj->data_size = data_size;
+		}
 		break;
 
 	case CKO_SECRET_KEY:
@@ -244,7 +248,7 @@ CK_RV create_object(void *session, void *head, void *data, size_t data_size,
 		TEE_Panic(0);
 	}
 
-	if (is_persistent && obj->key_handle != TEE_HANDLE_NULL) {
+	if (is_persistent) {
 		TEE_ObjectHandle handle = obj->key_handle;
 
 		/*
@@ -274,7 +278,9 @@ CK_RV create_object(void *session, void *head, void *data, size_t data_size,
 						 data, data_size,
 						 &obj->key_handle);
 
-		TEE_FreeTransientObject(handle);
+		if (handle != TEE_HANDLE_NULL)
+			TEE_FreeTransientObject(handle);
+
 		if (res) {
 			obj->key_handle = TEE_HANDLE_NULL;
 			goto bail;

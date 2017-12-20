@@ -21,6 +21,9 @@ struct sks_object {
 	/* These are for persistent/token objects */
 	void *id;
 	size_t id_size;
+	/* These are for session raw object, not as TEE tranisient object */
+	void *data;
+	size_t data_size;
 };
 
 LIST_HEAD(object_list, sks_object);
