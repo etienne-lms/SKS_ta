@@ -254,6 +254,9 @@ CK_RV ck_token_initialize(TEE_Param *ctrl, TEE_Param *in, TEE_Param *out)
 	if (!ctrl_arg)
 		return CKR_ARGUMENTS_BAD;
 
+	// TODO: check label against already registered tokens.
+	// 2 tokens can have the same label.
+
 	token = get_token(token_id);
 	if (!token)
 		return CKR_SLOT_ID_INVALID;
