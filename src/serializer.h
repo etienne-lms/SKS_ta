@@ -30,6 +30,30 @@ struct serializer {
 	uint32_t boolprop[SKS_MAX_BOOLPROP_ARRAY];
 };
 
+static inline size_t serial_is_rawhead(void *head)
+{
+	struct sks_obj_rawhead *raw = head;
+
+	return (raw->version == SKS_ABI_VERSION_CK_2_40 &&
+		SKS_ABI_HEAD(raw->configuration) == SKS_ABI_CONFIG_RAWHEAD);
+}
+
+static inline size_t serial_is_genhead(void *head)
+{
+	struct sks_obj_genhead *gen = head;
+
+	return (gen->version == SKS_ABI_VERSION_CK_2_40 &&
+		SKS_ABI_HEAD(gen->configuration) == SKS_ABI_CONFIG_RAWHEAD);
+}
+
+static inline size_t serial_is_keyhead(void *head)
+{
+	struct sks_obj_keyhead *key = head;
+
+	return (key->version == SKS_ABI_VERSION_CK_2_40 &&
+		SKS_ABI_HEAD(key->configuration) == SKS_ABI_CONFIG_RAWHEAD);
+}
+
 /* Return the byte size of the sks header */
 size_t sizeof_serial_object_head(struct serializer *obj);
 /* Return the byte size of the sks header */
