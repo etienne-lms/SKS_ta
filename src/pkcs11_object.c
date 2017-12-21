@@ -67,14 +67,20 @@ static CK_RV set_object_boolprop(struct serializer *obj,
 	return serialize_sks_ref(obj, attribute, &val, sizeof(val));
 }
 
+/*
+ * CKO_DATA expects several boolean attributes to be set to a default value
+ * or to a validate client configuration value. This function append the input
+ * attrubute (id/size/value) in the serailzed object.
+ */
 static CK_RV pkcs11_import_object_boolprop(struct serializer *obj, void *head,
-				    CK_ATTRIBUTE_TYPE attribute)
+					   CK_ATTRIBUTE_TYPE attribute)
 {
 	CK_RV rv;
 	CK_BBOOL *attr;
 	size_t attr_size;
 
-	rv = serial_get_attribute_ptr(head, attribute, (void **)&attr, &attr_size);
+	rv = serial_get_attribute_ptr(head, attribute,
+				      (void **)&attr, &attr_size);
 
 	/* default value if not found or malformed */
 	if (rv || attr_size != sizeof(CK_BBOOL))
