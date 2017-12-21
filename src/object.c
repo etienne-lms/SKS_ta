@@ -154,16 +154,16 @@ secret:
 }
 
 /*
- * Create an AES key object
+ * crate_object - Create an SKS object from attributes and sized data
  *
  * @session - session onwing the object creation
  * @head - serialized attributes (object data excluded)
  * @data - object data
  * @data_size - byte size of object data
- * @hld - object handle returned to hte client
+ * @out_handle - object handle returned to hte client
  */
 CK_RV create_object(void *session, void *head, void *data, size_t data_size,
-		    uint32_t *hdl)
+		    uint32_t *out_handle)
 {
 	CK_RV rv = CKR_OK;
 	TEE_Result res = TEE_SUCCESS;
@@ -300,7 +300,7 @@ bail:
 	if (rv)
 		cleanup_object(obj);
 	else
-		*hdl = obj->ck_handle;
+		*out_handle = obj->ck_handle;
 
 	return rv;
 }
