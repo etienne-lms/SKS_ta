@@ -12,6 +12,7 @@
 
 #include "ck_helpers.h"
 #include "serializer.h"
+#include "sanitize_object.h"
 
 static size_t __sizeof_serial_head(uint32_t version, uint32_t config)
 {
@@ -220,23 +221,17 @@ static bool attribute_is_in_head(struct serializer *ref, uint32_t attribute)
 	return false;
 }
 
-CK_RV serial_remove_attribute(void *ref, uint32_t attribute)
+CK_RV serializer_remove_attribute(struct serializer *obj, uint32_t attribute)
 {
-	CK_RV rv;
-	struct serializer *obj;
-	char *cur = ref;
+	char *cur;
 	char *end;
 	size_t next;
 	int found = 0;
 
-	rv = serializer_init_from_head(&obj, ref);
-	if (rv)
-		return rv;
-
 	/* Can't remove an attribute that is defined in the head */
 	if (attribute_is_in_head(obj, attribute)) {
-		rv = CKR_FUNCTION_FAILED;
-		goto bail;
+		EMSG("Expect attribute not in the head");
+		return CKR_FUNCTION_FAILED;
 	}
 
 	/* Let's find the target attribute */
@@ -268,18 +263,16 @@ CK_RV serial_remove_attribute(void *ref, uint32_t attribute)
 	/* sanity */
 	if (cur != end) {
 		EMSG("unexpected none alignement\n");
-		TEE_Panic(0);
+		return CKR_FUNCTION_FAILED;
 	}
 
-	if (!found)
-		rv = CKR_FUNCTION_FAILED;
-	else
-		rv = serializer_finalize(obj);
+	if (!found) {
+		EMSG("Expected CKA_VALUE not found");
+		return CKR_FUNCTION_FAILED;
 
-bail:
-	TEE_Free(obj);
+	}
 
-	return rv;
+	return serializer_finalize(obj);
 }
 
 /* Check attribute value matches provided blob */
@@ -288,7 +281,7 @@ bool serial_attribute_value_matches(char *head, uint32_t attr,
 {
 	size_t count = 1;
 	size_t attr_size;
-	void *attr_value = TEE_Malloc(size, 0);
+	void *attr_value = TEE_Malloc(size, TEE_MALLOC_FILL_ZERO);
 	void **attr_array = &attr_value;
 
 	if (!attr_value)
@@ -405,7 +398,7 @@ CK_RV serializer_reset_to_keyhead(struct serializer *obj)
 	return serialize_buffer(obj, &head, sizeof(head));
 }
 
-CK_RV serializer_init_from_head(struct serializer **out, void *ref)
+CK_RV serializer_init_from_head(struct serializer **out, void *ref, size_t size)
 {
 	struct serializer *obj;
 	union {
@@ -414,12 +407,20 @@ CK_RV serializer_init_from_head(struct serializer **out, void *ref)
 		struct sks_obj_keyhead key;
 	} head;
 
-
-	obj = TEE_Malloc(sizeof(*obj), 0);
+	obj = TEE_Malloc(sizeof(*obj), TEE_MALLOC_FILL_ZERO);
 	if (!obj)
 		return CKR_DEVICE_MEMORY;
 
+#ifdef DEBUG
+	serial_trace_attributes_from_head(__func__, ref);
+#endif
+
 	serializer_reset(obj);
+
+	if (size < sizeof(head.raw)) {
+		EMSG("memref too small");
+		return CKR_FUNCTION_FAILED;
+	}
 
 	TEE_MemMove(&head.raw, ref, sizeof(head.raw));
 
@@ -436,11 +437,17 @@ CK_RV serializer_init_from_head(struct serializer **out, void *ref)
 		obj->item_count = head.raw.blobs_count;
 		break;
 	case SKS_ABI_CONFIG_GENHEAD:
+		if (size < sizeof(head.gen))
+			goto error;
+
 		TEE_MemMove(&head.gen, ref, sizeof(head.gen));
 		obj->size = sizeof(head.gen) + head.gen.blobs_size;
 		obj->item_count = head.gen.blobs_count;
 		break;
 	case SKS_ABI_CONFIG_KEYHEAD:
+		if (size < sizeof(head.key))
+			goto error;
+
 		TEE_MemMove(&head.key, ref, sizeof(head.key));
 		obj->size = sizeof(head.key) + head.key.blobs_size;
 		obj->item_count = head.key.blobs_count;
@@ -449,7 +456,13 @@ CK_RV serializer_init_from_head(struct serializer **out, void *ref)
 		goto error;
 	}
 
+	if (size < obj->size) {
+		MSG("bad size obj->size=%x  size=%x", obj->size, size);
+		goto error;
+	}
+
 	*out = obj;
+
 	return CKR_OK;
 
 error:
@@ -496,23 +509,34 @@ CK_RV serializer_finalize(struct serializer *obj)
 			TEE_MemMove(obj->buffer, &head.key, sizeof(head.key));
 			break;
 		default:
+			EMSG("Unknown format");
 			return CKR_FUNCTION_FAILED;
 		}
 		break;
 	default:
+		EMSG("Unknown format");
 		return CKR_FUNCTION_FAILED;
 	}
 
 	return CKR_OK;
 }
 
-void serializer_release(struct serializer *obj)
+void serializer_release_buffer(struct serializer *obj)
 {
 	TEE_Free(obj->buffer);
 	obj->buffer = NULL;
 }
 
-/**
+void serializer_release(struct serializer *obj)
+{
+	if (!obj)
+		return;
+
+	serializer_release_buffer(obj);
+	TEE_Free(obj);
+}
+
+/*
  * serialize - serialize input data in buffer
  *
  * Serialize data in provided buffer.

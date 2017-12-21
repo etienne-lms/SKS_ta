@@ -9,8 +9,20 @@
 #include <pkcs11.h>
 #include "serializer.h"
 
-/* Generate a sanitized copy of a serialized CK attribute object */
-CK_RV serial_sanitize_attributes(void **head, void *ref, size_t ref_size);
+/**
+ * sanitize_attributes_from_head - Setup a serializer from a serialized object
+ *
+ * @out - output structure tracking the generated serial object
+ * @ref - pointer to the formated serialized object (its head)
+ * @size - byte size of the serialized binary blob
+ *
+ * ref points to a blob starting with a sks head.
+ * ref may pointer to an unaligned address.
+ * This function allocates, fill and returns a serialized attribute list
+ * into a serializer container.
+ */
+CK_RV sanitize_attributes_from_head(struct serializer *dst,
+				    void *head, size_t size);
 
 /* TODO */
 CK_RV serial_sanitize_mechanism(struct serializer *obj);

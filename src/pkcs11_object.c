@@ -68,7 +68,7 @@ static CK_RV set_object_boolprop(struct serializer *obj,
 }
 
 /*
- * CKO_DATA expects several boolean attributes to be set to a default value
+ * Object expects several boolean attributes to be set to a default value
  * or to a validate client configuration value. This function append the input
  * attrubute (id/size/value) in the serailzed object.
  */
@@ -78,6 +78,12 @@ static CK_RV pkcs11_import_object_boolprop(struct serializer *obj, void *head,
 	CK_RV rv;
 	CK_BBOOL *attr;
 	size_t attr_size;
+
+	/* Expect boolprop not defined in head: it is added outside the head */
+	if (!serial_is_rawhead(head) && !serial_is_genhead(head)) {
+		EMSG("Expect boolprop not in head");
+		return CKR_FUNCTION_FAILED;
+	}
 
 	rv = serial_get_attribute_ptr(head, attribute,
 				      (void **)&attr, &attr_size);
@@ -90,185 +96,201 @@ static CK_RV pkcs11_import_object_boolprop(struct serializer *obj, void *head,
 	return serialize_sks_ref(obj, attribute, attr, sizeof(CK_BBOOL));
 }
 
-CK_RV set_pkcs11_imported_symkey_attributes(void **out, void *ref)
+CK_RV create_pkcs11_symkey_attributes(struct serializer **out, void *head)
 {
 	CK_RV rv;
-	struct serializer obj;
+	struct serializer *obj;
 	void *attr;
 	size_t size;
-	CK_ULONG class = serial_get_class(ref);
-	CK_ULONG type = serial_get_type(ref);
+	CK_ULONG class = serial_get_class(head);
+	CK_ULONG type = serial_get_type(head);
+
+	obj = TEE_Malloc(sizeof(*obj), TEE_USER_MEM_HINT_NO_FILL_ZERO);
+	if (!obj)
+		return CKR_DEVICE_MEMORY;
 
 	/* TODO: move to keyhead serial object: easier boolprop handling */
-	serializer_reset_to_rawhead(&obj);
+	serializer_reset_to_rawhead(obj);
 
 	/* Class and type are mandatory */
-	rv = serialize_sks_ref(&obj, CKA_CLASS, &class, sizeof(class));
+	rv = serialize_sks_ref(obj, CKA_CLASS, &class, sizeof(CK_ULONG));
 	if (rv)
 		goto bail;
 
-	rv = serialize_sks_ref(&obj, CKA_KEY_TYPE, &type, sizeof(type));
+	rv = serialize_sks_ref(obj, CKA_KEY_TYPE, &type, sizeof(CK_ULONG));
 	if (rv)
 		goto bail;
 
 	/* Default boolean properties the client template can override */
-	rv = pkcs11_import_object_boolprop(&obj, ref, CKA_TOKEN);
+	rv = pkcs11_import_object_boolprop(obj, head, CKA_TOKEN);
 	if (rv)
 		goto bail;
 
-	rv = pkcs11_import_object_boolprop(&obj, ref, CKA_PRIVATE);
+	rv = pkcs11_import_object_boolprop(obj, head, CKA_PRIVATE);
 	if (rv)
 		goto bail;
 
-	rv = pkcs11_import_object_boolprop(&obj, ref, CKA_MODIFIABLE);
+	rv = pkcs11_import_object_boolprop(obj, head, CKA_MODIFIABLE);
 	if (rv)
 		goto bail;
 
-	rv = pkcs11_import_object_boolprop(&obj, ref, CKA_COPYABLE);
+	rv = pkcs11_import_object_boolprop(obj, head, CKA_COPYABLE);
 	if (rv)
 		goto bail;
 
-	rv = pkcs11_import_object_boolprop(&obj, ref, CKA_DESTROYABLE);
+	rv = pkcs11_import_object_boolprop(obj, head, CKA_DESTROYABLE);
 	if (rv)
 		goto bail;
 
-	rv = pkcs11_import_object_boolprop(&obj, ref, CKA_DERIVE);
+	rv = pkcs11_import_object_boolprop(obj, head, CKA_DERIVE);
 	if (rv)
 		goto bail;
 
-	rv = pkcs11_import_object_boolprop(&obj, ref, CKA_LOCAL);
+	rv = pkcs11_import_object_boolprop(obj, head, CKA_LOCAL);
 	if (rv)
 		goto bail;
 
-	rv = pkcs11_import_object_boolprop(&obj, ref, CKA_SENSITIVE);
+	rv = pkcs11_import_object_boolprop(obj, head, CKA_SENSITIVE);
 	if (rv)
 		goto bail;
 
-	rv = pkcs11_import_object_boolprop(&obj, ref, CKA_ENCRYPT);
+	rv = pkcs11_import_object_boolprop(obj, head, CKA_ENCRYPT);
 	if (rv)
 		goto bail;
 
-	rv = pkcs11_import_object_boolprop(&obj, ref, CKA_DECRYPT);
+	rv = pkcs11_import_object_boolprop(obj, head, CKA_DECRYPT);
 	if (rv)
 		goto bail;
 
-	rv = pkcs11_import_object_boolprop(&obj, ref, CKA_SIGN);
+	rv = pkcs11_import_object_boolprop(obj, head, CKA_SIGN);
 	if (rv)
 		goto bail;
 
-	rv = pkcs11_import_object_boolprop(&obj, ref, CKA_VERIFY);
+	rv = pkcs11_import_object_boolprop(obj, head, CKA_VERIFY);
 	if (rv)
 		goto bail;
 
-	rv = pkcs11_import_object_boolprop(&obj, ref, CKA_WRAP);
+	rv = pkcs11_import_object_boolprop(obj, head, CKA_WRAP);
 	if (rv)
 		goto bail;
 
-	rv = pkcs11_import_object_boolprop(&obj, ref, CKA_UNWRAP);
+	rv = pkcs11_import_object_boolprop(obj, head, CKA_UNWRAP);
 	if (rv)
 		goto bail;
 
-	rv = pkcs11_import_object_boolprop(&obj, ref, CKA_EXTRACTABLE);
+	rv = pkcs11_import_object_boolprop(obj, head, CKA_EXTRACTABLE);
 	if (rv)
 		goto bail;
 
-	rv = pkcs11_import_object_boolprop(&obj, ref, CKA_ALWAYS_SENSITIVE);
+	rv = pkcs11_import_object_boolprop(obj, head, CKA_ALWAYS_SENSITIVE);
 	if (rv)
 		goto bail;
 
-	rv = pkcs11_import_object_boolprop(&obj, ref, CKA_NEVER_EXTRACTABLE);
+	rv = pkcs11_import_object_boolprop(obj, head, CKA_NEVER_EXTRACTABLE);
 	if (rv)
 		goto bail;
-	rv = pkcs11_import_object_boolprop(&obj, ref, CKA_WRAP_WITH_TRUSTED);
+	rv = pkcs11_import_object_boolprop(obj, head, CKA_WRAP_WITH_TRUSTED);
 	if (rv)
 		goto bail;
 
 	/* Imported clearkey cannot be trusted */
-	rv = set_object_boolprop(&obj, CKA_TRUSTED, CK_FALSE);
+	rv = set_object_boolprop(obj, CKA_TRUSTED, CK_FALSE);
 	if (rv)
 		goto bail;
 
-	/* Do not forget the mandated key data */
-	rv = serial_get_attribute_ptr(ref, CKA_VALUE, &attr, &size);
+	/* Do not forget the key data if any (may be outside the attributes) */
+	rv = serial_get_attribute_ptr(head, CKA_VALUE, &attr, &size);
 	if (rv == CKR_OK)
-		rv = serialize_sks_ref(&obj, CKA_VALUE, attr, size);
+		rv = serialize_sks_ref(obj, CKA_VALUE, attr, size);
 
-	rv = serializer_finalize(&obj);
+	rv = serializer_finalize(obj);
+	if (rv)
+		goto bail;
+
+	*out = obj;
 
 bail:
-	if (rv)
-		serializer_release(&obj);
-	else
-		*out = obj.buffer;
+	if (rv) {
+		serializer_release_buffer(obj);
+		TEE_Free(obj);
+	}
 
 	return rv;
 }
 
-/*
- * The serialized attribute is expected to contain at least well formated
- * and consistent class and type attributes. All other attributes are check
- * here.
- */
-CK_RV set_pkcs11_data_object_attributes(void **out, void *ref)
+CK_RV create_pkcs11_data_attributes(struct serializer **out, void *head)
 {
 	CK_RV rv;
-	struct serializer obj;
+	struct serializer *obj;
 	void *attr;
 	size_t size;
-	uint32_t class =serial_get_class(ref);
+	uint32_t class = CKO_DATA;
+
+	if (serial_get_class(head) != CKO_DATA) {
+		EMSG("Expect CKO_DATA");
+		return CKR_FUNCTION_FAILED;
+	}
+
+	obj = TEE_Malloc(sizeof(*obj), TEE_USER_MEM_HINT_NO_FILL_ZERO);
+	if (!obj)
+		return CKR_DEVICE_MEMORY;
 
 	/* TODO: move to keyhead serial object: easier boolprop handling */
-	serializer_reset_to_rawhead(&obj);
+	serializer_reset_to_rawhead(obj);
 
 	/* Class and type are mandatory */
-	rv = serialize_sks_ref(&obj, CKA_CLASS, &class, sizeof(class));
+	rv = serialize_sks_ref(obj, CKA_CLASS, &class, sizeof(CK_ULONG));
 	if (rv)
 		goto bail;
 
 	/* Default boolean properties the client template can override */
-	rv = pkcs11_import_object_boolprop(&obj, ref, CKA_TOKEN);
+	rv = pkcs11_import_object_boolprop(obj, head, CKA_TOKEN);
 	if (rv)
 		goto bail;
 
 	// TODO: check the expect default value
-	rv = pkcs11_import_object_boolprop(&obj, ref, CKA_PRIVATE);
+	rv = pkcs11_import_object_boolprop(obj, head, CKA_PRIVATE);
 	if (rv)
 		goto bail;
 
-	rv = pkcs11_import_object_boolprop(&obj, ref, CKA_MODIFIABLE);
+	rv = pkcs11_import_object_boolprop(obj, head, CKA_MODIFIABLE);
 	if (rv)
 		goto bail;
 
-	rv = pkcs11_import_object_boolprop(&obj, ref, CKA_COPYABLE);
+	rv = pkcs11_import_object_boolprop(obj, head, CKA_COPYABLE);
 	if (rv)
 		goto bail;
 
-	rv = pkcs11_import_object_boolprop(&obj, ref, CKA_DESTROYABLE);
+	rv = pkcs11_import_object_boolprop(obj, head, CKA_DESTROYABLE);
 	if (rv)
 		goto bail;
 
 	/* Optional attributes */
-	rv = serial_get_attribute_ptr(ref, CKA_APPLICATION, &attr, &size);
+	rv = serial_get_attribute_ptr(head, CKA_APPLICATION, &attr, &size);
 	if (rv == CKR_OK) {
-		rv = serialize_sks_ref(&obj, CKA_APPLICATION, attr, size);
+		rv = serialize_sks_ref(obj, CKA_APPLICATION, attr, size);
 		if (rv)
 			goto bail;
 	}
 
-	rv = serial_get_attribute_ptr(ref, CKA_OBJECT_ID, &attr, &size);
+	rv = serial_get_attribute_ptr(head, CKA_OBJECT_ID, &attr, &size);
 	if (rv == CKR_OK) {
-		rv = serialize_sks_ref(&obj, CKA_OBJECT_ID, attr, size);
+		rv = serialize_sks_ref(obj, CKA_OBJECT_ID, attr, size);
 		if (rv)
 			goto bail;
 	}
 
-	rv = serializer_finalize(&obj);
+	rv = serializer_finalize(obj);
+	if (rv)
+		goto bail;
+
+	*out = obj;
 
 bail:
-	if (rv)
-		serializer_release(&obj);
-	else
-		*out = obj.buffer;
+	if (rv) {
+		serializer_release_buffer(obj);
+		TEE_Free(obj);
+	}
 
 	return rv;
 }

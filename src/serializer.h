@@ -66,8 +66,9 @@ void serializer_reset(struct serializer *obj);
 CK_RV serializer_reset_to_rawhead(struct serializer *obj);
 CK_RV serializer_reset_to_genhead(struct serializer *obj);
 CK_RV serializer_reset_to_keyhead(struct serializer *obj);
-CK_RV serializer_init_from_head(struct serializer **out, void *ref);
+CK_RV serializer_init_from_head(struct serializer **dst, void *head, size_t sz);
 CK_RV serializer_finalize(struct serializer *obj);
+void serializer_release_buffer(struct serializer *obj);
 void serializer_release(struct serializer *obj);
 
 /**
@@ -178,12 +179,12 @@ CK_RV serial_get_attribute(void *ref, uint32_t attribute,
 /*
  * serial_remove_attribute - Remove an attribute from a serialized object
  *
- * @ref - object attribute reference where the attribute shall be removed
+ * @ref - reference to serialized attribute
  * @attribute - ID of the attribute to remove
  *
  * Return CKR_OK on success, CKR_FUNCTION_FAILED on error.
  */
-CK_RV serial_remove_attribute(void *ref, uint32_t attribute);
+CK_RV serializer_remove_attribute(struct serializer *ref, uint32_t attribute);
 
 #endif /*__SERIALIZER_H*/
 

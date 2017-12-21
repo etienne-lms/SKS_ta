@@ -179,9 +179,6 @@ static CK_RV sanitize_boolprops(struct serializer *dst,
 	return CKR_OK;
 }
 
-/* Forward ref since an attribute refernece can contain a list of attribute */
-static CK_RV sanitize_attributes_from_head(struct serializer *dst, void *src);
-
 /* Counterpart of serialize_indirect_attribute() */
 static CK_RV sanitize_indirect_attr(struct serializer *dst,
 				    struct serializer *src,
@@ -208,7 +205,8 @@ static CK_RV sanitize_indirect_attr(struct serializer *dst,
 		return CKR_TEMPLATE_INCONSISTENT;
 
 	/* Build a new serial object while sanitizing the attributes list */
-	rv = sanitize_attributes_from_head(&obj2, cur + sizeof(*sks_ref));
+	rv = sanitize_attributes_from_head(&obj2, cur + sizeof(*sks_ref),
+					   sks_ref->size);
 	if (rv)
 		return rv;
 
@@ -229,39 +227,32 @@ static CK_RV sanitize_indirect_attr(struct serializer *dst,
 	return rv;
 }
 
-/**
- * serial_raw2gen_attributes - create a genhead serial object from a sks blob.
- *
- * @out_object - output structure tracking the generated serial object
- * @ref - pointer to the rawhead formated serialized object
- *
- * ref points to a blob starting with a sks head.
- * ref may pointer to an unaligned address.
- * This function generates another serial blob starting with a genhead
- * (class and type extracted).
- */
-static CK_RV sanitize_attributes_from_head(struct serializer *dst, void *src)
+CK_RV sanitize_attributes_from_head(struct serializer *dst,
+					   void *head, size_t size)
 {
-	struct serializer *obj;
+	struct serializer *src;
 	CK_RV rv;
 	char *cur;
 	char *end;
 	size_t next;
 
-	rv = serializer_init_from_head(&obj, src);
+	rv = serializer_init_from_head(&src, head, size);
 	if (rv)
 		return rv;
 
-	rv = sanitize_class_and_type(dst, obj);
+	// TODO: move to keyhead format
+	serializer_reset_to_rawhead(dst);
+
+	rv = sanitize_class_and_type(dst, src);
 	if (rv)
 		goto bail;
 
-	rv = sanitize_boolprops(dst, obj);
+	rv = sanitize_boolprops(dst, src);
 	if (rv)
 		goto bail;
 
-	cur = obj->buffer + sizeof_serial_object_head(obj);
-	end = obj->buffer + obj->size;
+	cur = src->buffer + sizeof_serial_object_head(src);
+	end = src->buffer + src->size;
 	for (; cur < end; cur += next) {
 		struct sks_ref sks_ref;
 
@@ -273,7 +264,7 @@ static CK_RV sanitize_attributes_from_head(struct serializer *dst, void *src)
 		    sks_attr2boolprop_shift(sks_ref.id) >= 0)
 			continue;
 
-		rv = sanitize_indirect_attr(dst, obj, &sks_ref, cur);
+		rv = sanitize_indirect_attr(dst, src, &sks_ref, cur);
 		if (rv == CKR_OK)
 			continue;
 		if (rv != CKR_NO_EVENT)
@@ -297,29 +288,9 @@ static CK_RV sanitize_attributes_from_head(struct serializer *dst, void *src)
 	rv = serializer_finalize(dst);
 
 bail:
-	TEE_Free(obj);
-
-	return rv;
-}
-
-/* Sanitize ref into head (this duplicates the serial object in memory) */
-CK_RV serial_sanitize_attributes(void **head, void *ref, size_t ref_size)
-{
-	struct serializer dst_obj;
-	CK_RV rv;
-
-	if (ref_size < serial_get_size(ref))
-		return CKR_FUNCTION_FAILED; // FIXME: invalid arguments
-
-	rv = serializer_reset_to_rawhead(&dst_obj);
-	if (rv)
-		return rv;
-
-	rv = sanitize_attributes_from_head(&dst_obj, ref);
-	if (rv)
-		serializer_release(&dst_obj);
-	else
-		*head = dst_obj.buffer;
+	/* Called is still the owner of the input buffer, do not free it */
+	src->buffer = NULL;
+	serializer_release(src);
 
 	return rv;
 }

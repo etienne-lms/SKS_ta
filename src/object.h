@@ -38,6 +38,13 @@ struct sks_object *object_get_tee_handle(uint32_t ck_handle);
  * @data - reference to object value
  * @data_size - byte size of the object value
  * @handle - generated handle for the created object
+ *
+ * @data is freed if the generate sks object takes ownership of the related
+ * memory buffer, that is if data buffer can be freed only once the sks
+ * object itself is freed. This assume data was TEE_Malloced.
+ *
+ * If the function returns CKR_OK, caller shall not free @data refernece
+ * because this function may have done it or may expect caller wont.
  */
 CK_RV create_object(void *session, void *attribute,
 		    void *data, size_t data_size,

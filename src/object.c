@@ -153,15 +153,6 @@ secret:
 	return CKR_OK;
 }
 
-/*
- * crate_object - Create an SKS object from attributes and sized data
- *
- * @session - session onwing the object creation
- * @head - serialized attributes (object data excluded)
- * @data - object data
- * @data_size - byte size of object data
- * @out_handle - object handle returned to hte client
- */
 CK_RV create_object(void *session, void *head, void *data, size_t data_size,
 		    uint32_t *out_handle)
 {
@@ -210,6 +201,7 @@ CK_RV create_object(void *session, void *head, void *data, size_t data_size,
 	switch (serial_get_class(head)) {
 	case CKO_DATA:
 		if (!is_persistent) {
+			/* Volatile object now owns the data buffer */
 			obj->data = data;
 			obj->data_size = data_size;
 		}
@@ -266,7 +258,7 @@ CK_RV create_object(void *session, void *head, void *data, size_t data_size,
 
 		TEE_GenerateRandom(obj->id, obj->id_size);
 
-		// TODO: add TEE ID as an atttirbute of the object.
+		// TODO: add field 'id' to the attribute list of the object.
 
 		res = TEE_CreatePersistentObject(TEE_STORAGE_PRIVATE,
 						 obj->id, obj->id_size,
@@ -300,6 +292,13 @@ CK_RV create_object(void *session, void *head, void *data, size_t data_size,
 	//serial_trace_attributes_from_head("[create]", object->attributes);
 
 bail:
+	/* Free data buffer if its content has been moved to a TEE object */
+	if (!obj->data) {
+		MSG("free");
+		TEE_Free(data);
+		MSG("freed");
+	}
+
 	if (res)
 		rv = tee2ckr_error(res);
 
@@ -311,28 +310,42 @@ bail:
 	return rv;
 }
 
-/* Split object attributes from aobject data (expected as attribute item) */
-static CK_RV extract_object_data(void *head, void **data, size_t *data_size)
+/*
+ * Find a 'value' attribute in serializer object.
+ * Remove the attribute reference from the serialized object and return
+ * it in output data arguments.
+ *
+ * Return CKR_ATTRIBUTE_VALUE_INVALID if the attribute is not found.
+ * Return CKR_OK on success and error ck code on failure.
+ */
+static CK_RV extract_object_data(struct serializer *attributes,
+				 void **data, size_t *data_size)
 {
 	CK_RV rv;
+	void *value;
 	size_t size = 0;
 
-	rv = serial_get_attribute(head, CKA_VALUE, NULL, &size);
+	rv = serial_get_attribute(attributes->buffer, CKA_VALUE, NULL, &size);
 	if (rv != CKR_BUFFER_TOO_SMALL)
 		return CKR_ATTRIBUTE_VALUE_INVALID;
 
-	*data = TEE_Malloc(size, 0);
-	if (!*data)
+	value = TEE_Malloc(size, TEE_USER_MEM_HINT_NO_FILL_ZERO);
+	if (!value)
 		return CKR_DEVICE_MEMORY;
 
-	*data_size = size;
-	rv = serial_get_attribute(head, CKA_VALUE, *data, data_size);
+	rv = serial_get_attribute(attributes->buffer, CKA_VALUE, value, &size);
 	if (rv)
-		TEE_Panic(0);
+		TEE_Panic(0);		// FIXME: use assert
 
-	rv = serial_remove_attribute(head, CKA_VALUE);
+	*data_size = size;
+	data = value;
+
+	rv = serializer_remove_attribute(attributes, CKA_VALUE);
 	if (rv)
-		TEE_Free(*data);
+		TEE_Panic(0);		// FIXME: use assert
+
+	*data_size = size;
+	*data = value;
 
 	return rv;
 }
@@ -347,14 +360,15 @@ CK_RV entry_create_object(int teesess,
 	char *ctrl_ptr;
 	uint32_t ck_session;
 	struct pkcs11_session *session;
-	char *head;
+	struct serializer template;
+	struct serializer *attrs = NULL;
 	uint32_t obj_handle;
-	void *temp;
+	void *temp = NULL;
 	size_t temp_size;
-	void *obj_head = NULL;
 	void *data;
 	size_t data_size;
 
+	/* Arguments */
 	if (!ctrl || in || !out || out->memref.size < sizeof(uint32_t))
 		return CKR_ARGUMENTS_BAD;
 
@@ -365,58 +379,70 @@ CK_RV entry_create_object(int teesess,
 	if (!session || session->tee_session != teesess)
 		return CKR_SESSION_HANDLE_INVALID;
 
-	/*
-	 * Safely copy and sanitize the client attribute serial object
-	 */
+	/* Safely copy attributes and sanitize the content */
 	temp_size = ctrl->memref.size - sizeof(uint32_t);
 	temp = TEE_Malloc(temp_size, TEE_USER_MEM_HINT_NO_FILL_ZERO);
 	if (!temp)
 		return CKR_DEVICE_MEMORY;
 
 	TEE_MemMove(temp, ctrl_ptr + sizeof(uint32_t), temp_size);
-	rv = serial_sanitize_attributes((void **)&head, temp, temp_size);
+
+#ifdef DEBUG
+	serial_trace_attributes_from_head("client-template", temp);
+#endif
+
+	rv = sanitize_attributes_from_head(&template, temp, temp_size);
+	TEE_Free(temp);
+
 	if (rv)
 		goto bail;
 
-	/*
-	 * Set the object attributes
-	 */
-	switch (serial_get_class(head)) {
+	/* Set the attributes from pkcs11 directives and requested template */
+	switch (template.class) {
 	case CKO_DATA:
-		rv = set_pkcs11_data_object_attributes(&obj_head, head);
+		rv = create_pkcs11_data_attributes(&attrs, template.buffer);
 		break;
 	case CKO_SECRET_KEY:
-		rv = set_pkcs11_imported_symkey_attributes(&obj_head, head);
+		rv = create_pkcs11_symkey_attributes(&attrs, template.buffer);
 		break;
 	default:
 		rv = CKR_OBJECT_HANDLE_INVALID;
 		break;
 	}
 
+	serializer_release_buffer(&template);
 	if (rv)
 		goto bail;
+
+	/* Seperate object data from object attribute and create the object */
+	rv = extract_object_data(attrs, &data, &data_size);
+	if (rv)
+		goto bail;
+
+	rv = create_object(session, attrs->buffer, data, data_size, &obj_handle);
+	if (rv)
+		goto bail;
+
+#ifdef DEBUG
+	serial_trace_attributes_from_head("attributes", attrs->buffer);
+#endif
+
+	TEE_MemMove(out->memref.buffer, &obj_handle, sizeof(uint32_t));
+	out->memref.size = sizeof(uint32_t);
 
 	/*
-	 * Seperate object data from object attribute and create the object
+	 * Memory for 'data' was allocated in extract_object_data.
+	 * Now to was either freed or get owned by the generated sks object.
 	 */
-	rv = extract_object_data(obj_head, &data, &data_size);
-	if (rv)
-		goto bail;
 
-	rv = create_object(session, obj_head, data, data_size, &obj_handle);
-
+	/*
+	 * Now obj_handle and relate struct sks_object own the attribute
+	 * serialised buffer. Hence we must not free attrs->buffer but
+	 * serializer resources can be freed from serializer_release().
+	 */
+	attrs->buffer = NULL;
 bail:
-	TEE_Free(temp);
-	TEE_Free(head);
-
-	if (rv) {
-		TEE_Free(obj_head);
-		TEE_Free(data);
-	} else {
-		TEE_MemMove(out->memref.buffer, &obj_handle, sizeof(uint32_t));
-		out->memref.size = sizeof(uint32_t);
-	}
-
+	serializer_release(attrs);
 	return rv;
 }
 
